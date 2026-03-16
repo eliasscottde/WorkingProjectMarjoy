@@ -1,0 +1,666 @@
+
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a08;
+    --bg1: #111110;
+    --bg2: #1a1a17;
+    --bg3: #222220;
+    --border: #2a2a26;
+    --border2: #3a3a34;
+    --amber: #f0a030;
+    --amber-dim: #8a5a18;
+    --amber-bright: #ffb84d;
+    --green: #4ade80;
+    --green-dim: #166534;
+    --red: #f87171;
+    --red-dim: #7f1d1d;
+    --cyan: #22d3ee;
+    --cyan-dim: #164e63;
+    --muted: #5a5a52;
+    --muted2: #3a3a34;
+    --text: #e8e0cc;
+    --text2: #a09880;
+    --text3: #6a6458;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  body { background: var(--bg); color: var(--text); font-family: var(--mono); font-size: 12px; line-height: 1.4; min-height: 100vh; }
+
+  .topbar {
+    background: var(--bg1);
+    border-bottom: 1px solid var(--border);
+    padding: 0 16px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+  }
+  .logo { color: var(--amber); font-weight: 600; font-size: 13px; letter-spacing: 0.12em; text-transform: uppercase; }
+  .logo span { color: var(--muted); font-weight: 300; }
+  .topbar-right { display: flex; align-items: center; gap: 20px; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); display: inline-block; margin-right: 6px; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .topbar-meta { color: var(--text3); font-size: 10px; }
+  .topbar-time { color: var(--amber-dim); font-size: 11px; }
+
+  .ticker-bar {
+    background: var(--bg2);
+    border-bottom: 1px solid var(--border);
+    padding: 4px 16px;
+    display: flex;
+    gap: 24px;
+    overflow: hidden;
+    font-size: 10px;
+  }
+  .tick { display: flex; gap: 8px; align-items: center; white-space: nowrap; }
+  .tick-hub { color: var(--text3); }
+  .tick-price { color: var(--amber); font-weight: 500; }
+  .tick-chg.up { color: var(--green); }
+  .tick-chg.dn { color: var(--red); }
+
+  .layout { display: grid; grid-template-columns: 1fr 340px; min-height: calc(100vh - 70px); }
+
+  .main { padding: 16px; border-right: 1px solid var(--border); }
+  .sidebar { padding: 16px; background: var(--bg1); }
+
+  .section-header {
+    display: flex; align-items: center; gap: 8px;
+    border-bottom: 1px solid var(--border);
+    padding-bottom: 8px; margin-bottom: 12px;
+    color: var(--text3); font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+  }
+  .section-header .hl { color: var(--amber); font-weight: 500; }
+
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+  .form-group { display: flex; flex-direction: column; gap: 4px; }
+  .form-group.full { grid-column: 1/-1; }
+  .form-label { color: var(--text3); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
+  
+  .form-control {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 7px 10px;
+    outline: none;
+    transition: border-color 0.15s;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  .form-control:focus { border-color: var(--amber-dim); background: var(--bg3); }
+  .form-control option { background: var(--bg2); }
+
+  .volume-row { display: flex; align-items: center; gap: 8px; }
+  .volume-row .form-control { flex: 1; }
+  .unit-badge { color: var(--text3); font-size: 10px; white-space: nowrap; }
+
+  .quick-btns { display: flex; gap: 6px; margin-top: 6px; }
+  .quick-btn {
+    background: var(--bg3); border: 1px solid var(--border2);
+    color: var(--text2); font-family: var(--mono); font-size: 10px;
+    padding: 3px 8px; cursor: pointer; transition: all 0.1s;
+  }
+  .quick-btn:hover { background: var(--amber-dim); color: var(--amber-bright); border-color: var(--amber-dim); }
+
+  .quote-box {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    padding: 14px;
+    margin-bottom: 14px;
+    position: relative;
+  }
+  .quote-box::before {
+    content: '';
+    position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+    background: var(--amber);
+  }
+  .quote-loading { color: var(--text3); font-size: 11px; }
+  .quote-price-row { display: flex; align-items: baseline; gap: 12px; margin-bottom: 10px; }
+  .quote-price { font-size: 28px; font-weight: 600; color: var(--amber-bright); letter-spacing: -0.02em; }
+  .quote-unit { color: var(--text3); font-size: 11px; }
+  .quote-breakdown { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; font-size: 11px; }
+  .qb-label { color: var(--text3); }
+  .qb-val { color: var(--text2); text-align: right; font-variant-numeric: tabular-nums; }
+  .qb-val.total { color: var(--amber); font-weight: 500; }
+  .qb-divider { grid-column: 1/-1; border-top: 1px solid var(--border); margin: 4px 0; }
+
+  .route-viz {
+    background: var(--bg2); border: 1px solid var(--border);
+    padding: 12px 14px; margin-bottom: 14px;
+    font-size: 11px;
+  }
+  .route-nodes { display: flex; align-items: center; gap: 0; margin-top: 8px; }
+  .route-node { text-align: center; flex-shrink: 0; }
+  .route-node-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--amber); display: inline-block; }
+  .route-node-dot.end { background: var(--cyan); }
+  .route-node-label { font-size: 10px; color: var(--text3); margin-top: 3px; white-space: nowrap; }
+  .route-node-name { font-size: 11px; color: var(--text); font-weight: 500; }
+  .route-line { flex: 1; border-top: 1px dashed var(--border2); position: relative; margin: 0 6px; margin-bottom: 18px; }
+  .route-line-label { position: absolute; top: -17px; left: 50%; transform: translateX(-50%); color: var(--text3); font-size: 9px; white-space: nowrap; background: var(--bg2); padding: 0 3px; }
+  .route-line-icon { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); color: var(--amber-dim); font-size: 9px; }
+
+  .execute-btn {
+    width: 100%; padding: 12px;
+    background: var(--amber);
+    color: #0a0a08;
+    font-family: var(--mono); font-size: 13px; font-weight: 600;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    border: none; cursor: pointer;
+    transition: all 0.15s;
+    position: relative; overflow: hidden;
+  }
+  .execute-btn:hover { background: var(--amber-bright); }
+  .execute-btn:active { transform: scale(0.99); }
+  .execute-btn:disabled { background: var(--muted2); color: var(--muted); cursor: not-allowed; }
+
+  .order-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .order-table th { color: var(--text3); font-size: 9px; text-transform: uppercase; letter-spacing: 0.08em; font-weight: 400; padding: 4px 8px 6px; text-align: left; border-bottom: 1px solid var(--border); }
+  .order-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); color: var(--text2); font-variant-numeric: tabular-nums; }
+  .order-table tr:hover td { background: var(--bg3); }
+  .status-badge { display: inline-block; padding: 1px 6px; font-size: 9px; letter-spacing: 0.06em; }
+  .status-badge.executing { background: var(--cyan-dim); color: var(--cyan); }
+  .status-badge.matched { background: var(--green-dim); color: var(--green); }
+  .status-badge.pending { background: var(--bg3); color: var(--text3); border: 1px solid var(--border2); }
+
+  .market-depth { font-size: 11px; }
+  .depth-row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border); position: relative; }
+  .depth-bar { position: absolute; top: 0; bottom: 0; opacity: 0.12; }
+  .depth-bar.bid { right: 0; background: var(--green); }
+  .depth-bar.ask { left: 0; background: var(--red); }
+  .depth-price.bid { color: var(--green); font-variant-numeric: tabular-nums; }
+  .depth-price.ask { color: var(--red); font-variant-numeric: tabular-nums; }
+  .depth-vol { color: var(--text3); font-size: 10px; }
+
+  .alert-bar {
+    background: #1a1200; border: 1px solid var(--amber-dim);
+    padding: 8px 12px; margin-bottom: 12px;
+    font-size: 11px; color: var(--amber);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .alert-icon { font-size: 10px; }
+
+  .stat-row { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--border); }
+  .stat-label { color: var(--text3); font-size: 10px; }
+  .stat-val { color: var(--text2); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .stat-val.hl { color: var(--amber); }
+
+  .confirm-overlay {
+    display: none;
+    position: fixed; inset: 0; background: rgba(0,0,0,0.85);
+    z-index: 999; align-items: center; justify-content: center;
+  }
+  .confirm-overlay.active { display: flex; }
+  .confirm-modal {
+    background: var(--bg1); border: 1px solid var(--amber-dim);
+    width: 480px; padding: 24px;
+  }
+  .confirm-modal h2 { color: var(--amber); font-size: 14px; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+  .confirm-lines { margin-bottom: 20px; }
+  .confirm-line { display: flex; justify-content: space-between; padding: 5px 0; border-bottom: 1px solid var(--border); }
+  .confirm-line .k { color: var(--text3); font-size: 11px; }
+  .confirm-line .v { color: var(--text); font-size: 11px; font-weight: 500; }
+  .confirm-line .v.big { color: var(--amber-bright); font-size: 15px; }
+  .confirm-btns { display: flex; gap: 10px; }
+  .btn-confirm { flex: 1; padding: 10px; background: var(--amber); color: #0a0a08; font-family: var(--mono); font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; border: none; cursor: pointer; }
+  .btn-confirm:hover { background: var(--amber-bright); }
+  .btn-cancel { flex: 1; padding: 10px; background: transparent; color: var(--text3); font-family: var(--mono); font-size: 12px; border: 1px solid var(--border2); cursor: pointer; }
+  .btn-cancel:hover { border-color: var(--muted); color: var(--text2); }
+
+  .success-overlay {
+    display: none;
+    position: fixed; inset: 0; background: rgba(0,0,0,0.9);
+    z-index: 1000; align-items: center; justify-content: center; flex-direction: column; gap: 16px;
+  }
+  .success-overlay.active { display: flex; }
+  .success-box { text-align: center; }
+  .success-ref { color: var(--amber); font-size: 11px; margin-bottom: 6px; }
+  .success-title { color: var(--green); font-size: 20px; font-weight: 600; letter-spacing: 0.05em; margin-bottom: 4px; }
+  .success-sub { color: var(--text3); font-size: 11px; }
+  .success-close { margin-top: 20px; padding: 8px 24px; background: var(--bg2); border: 1px solid var(--border2); color: var(--text2); font-family: var(--mono); font-size: 11px; cursor: pointer; letter-spacing: 0.06em; }
+  .success-close:hover { border-color: var(--amber-dim); color: var(--amber); }
+</style>
+
+<div class="topbar">
+  <div class="logo">GASROUTE <span>// BUYER TERMINAL v0.1</span></div>
+  <div class="topbar-right">
+    <span class="topbar-meta"><span class="status-dot"></span>IGX FEED LIVE</span>
+    <span class="topbar-meta">MBR-4471</span>
+    <span class="topbar-time" id="clock">--:--:--</span>
+  </div>
+</div>
+
+<div class="ticker-bar" id="tickerBar"></div>
+
+<div class="layout">
+  <div class="main">
+    <div class="alert-bar" id="missedAlert" style="display:none">
+      <span class="alert-icon">⚡</span>
+      <span id="missedAlertText"></span>
+    </div>
+
+    <div class="section-header"><span class="hl">NEW ORDER</span> &nbsp;// PHYSICAL GAS DELIVERY</div>
+
+    <div class="form-grid">
+      <div class="form-group">
+        <label class="form-label">Delivery Point</label>
+        <select class="form-control" id="deliveryPoint" onchange="updateQuote()">
+          <option value="">— Select Hub —</option>
+          <option value="Dahej">Dahej (Western-Gujarat)</option>
+          <option value="Hazira">Hazira (Western-Gujarat)</option>
+          <option value="Mhaskal">Mhaskal (Western-Maharashtra)</option>
+          <option value="Ankot">Ankot (Western-Gujarat)</option>
+          <option value="Suvali">Suvali (Western-Gujarat)</option>
+          <option value="Bhadbhut">Bhadbhut (Western-Gujarat)</option>
+          <option value="Bokaro">Bokaro (Eastern-Jharkhand)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Contract Type</label>
+        <select class="form-control" id="contractType" onchange="updateQuote()">
+          <option value="Daily">Daily</option>
+          <option value="Weekly">Weekly</option>
+          <option value="Fortnightly">Fortnightly</option>
+          <option value="Monthly" selected>Monthly</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Delivery Start</label>
+        <input type="date" class="form-control" id="delivStart" onchange="updateQuote()">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Delivery End</label>
+        <input type="date" class="form-control" id="delivEnd" onchange="updateQuote()">
+      </div>
+
+      <div class="form-group full">
+        <label class="form-label">Volume (MMBtu)</label>
+        <div class="volume-row">
+          <input type="number" class="form-control" id="volume" placeholder="0" min="100" step="100" value="5000" oninput="updateQuote()">
+          <span class="unit-badge">MMBtu &nbsp;/&nbsp; <span id="gcalEquiv">—</span> GCal</span>
+        </div>
+        <div class="quick-btns">
+          <button class="quick-btn" onclick="setVol(1000)">1K</button>
+          <button class="quick-btn" onclick="setVol(5000)">5K</button>
+          <button class="quick-btn" onclick="setVol(10000)">10K</button>
+          <button class="quick-btn" onclick="setVol(50000)">50K</button>
+          <button class="quick-btn" onclick="setVol(155000)">155K</button>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Max Acceptable Price (₹/MMBtu)</label>
+        <input type="number" class="form-control" id="maxPrice" placeholder="Leave blank = market" oninput="updateQuote()">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Buyer Reference</label>
+        <input type="text" class="form-control" id="buyerRef" placeholder="e.g. PO-2026-031">
+      </div>
+    </div>
+
+    <div class="quote-box" id="quoteBox">
+      <div class="quote-loading">→ SELECT DELIVERY POINT AND VOLUME TO GENERATE QUOTE</div>
+    </div>
+
+    <div class="route-viz" id="routeViz" style="display:none">
+      <div class="section-header" style="margin-bottom:8px"><span class="hl">LOGISTICS ROUTE</span> &nbsp;// GASROUTE ARRANGED</div>
+      <div class="route-nodes" id="routeNodes"></div>
+    </div>
+
+    <button class="execute-btn" id="executeBtn" disabled onclick="openConfirm()">
+      EXECUTE ORDER
+    </button>
+
+    <div style="margin-top:20px">
+      <div class="section-header"><span class="hl">ORDER HISTORY</span> &nbsp;// SESSION</div>
+      <table class="order-table">
+        <thead>
+          <tr>
+            <th>REF</th><th>HUB</th><th>TYPE</th><th>VOL (MMBtu)</th><th>PRICE ₹/MMBtu</th><th>TOTAL ₹</th><th>STATUS</th><th>TIME</th>
+          </tr>
+        </thead>
+        <tbody id="orderHistory">
+          <tr><td colspan="8" style="color:var(--text3);text-align:center;padding:12px">No orders this session</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="sidebar">
+    <div class="section-header"><span class="hl">MARKET DEPTH</span> &nbsp;// <span id="depthHub">SELECT HUB</span></div>
+    <div class="market-depth" id="depthTable">
+      <div style="color:var(--text3);font-size:11px;padding:8px 0">Select a delivery point to view depth</div>
+    </div>
+
+    <div style="margin-top:20px">
+      <div class="section-header"><span class="hl">HUB STATS</span> &nbsp;// HISTORICAL IGX</div>
+      <div id="hubStats">
+        <div style="color:var(--text3);font-size:11px;padding:8px 0">—</div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px">
+      <div class="section-header"><span class="hl">LOGISTICS STATUS</span></div>
+      <div id="logisticsStatus">
+        <div class="stat-row"><span class="stat-label">Pipeline capacity (Dahej)</span><span class="stat-val" style="color:var(--green)">AVAILABLE</span></div>
+        <div class="stat-row"><span class="stat-label">LNG truck slots</span><span class="stat-val">14 available</span></div>
+        <div class="stat-row"><span class="stat-label">ISO container slots</span><span class="stat-val">6 available</span></div>
+        <div class="stat-row"><span class="stat-label">Est. dispatch</span><span class="stat-val">T+4h</span></div>
+        <div class="stat-row"><span class="stat-label">GasRoute margin (est)</span><span class="stat-val hl">₹18–34/MMBtu</span></div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px">
+      <div class="section-header"><span class="hl">LIVE MISSED TRADES</span> &nbsp;// IGX FEED</div>
+      <div id="missedFeed" style="font-size:10px;"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Confirm Modal -->
+<div class="confirm-overlay" id="confirmOverlay">
+  <div class="confirm-modal">
+    <h2>⚡ Confirm Order</h2>
+    <div class="confirm-lines" id="confirmLines"></div>
+    <div class="confirm-btns">
+      <button class="btn-cancel" onclick="closeConfirm()">CANCEL</button>
+      <button class="btn-confirm" onclick="submitOrder()">CONFIRM & EXECUTE</button>
+    </div>
+  </div>
+</div>
+
+<!-- Success Overlay -->
+<div class="success-overlay" id="successOverlay">
+  <div class="success-box">
+    <div class="success-ref" id="successRef"></div>
+    <div class="success-title">ORDER EXECUTING</div>
+    <div class="success-sub" id="successSub"></div>
+  </div>
+  <button class="success-close" onclick="closeSuccess()">BACK TO TERMINAL</button>
+</div>
+
+<script>
+const HUB_DATA = {
+  Dahej:    { avg_bid:956, avg_ask:1422, spread:199, missed:746,  vol:71518850, logistics:'Pipeline + SSLNG truck', dist:'—', src:'Hazira → Dahej (GGCL)' },
+  Hazira:   { avg_bid:964, avg_ask:1201, spread:131, missed:99,   vol:8415250,  logistics:'Regas terminal + pipeline', dist:'—', src:'LNG import terminal' },
+  Mhaskal:  { avg_bid:1134,avg_ask:1273, spread:154, missed:370,  vol:12901950, logistics:'Pipeline + truck relay', dist:'310km from Dahej', src:'DUPL/UUPL mainline' },
+  Ankot:    { avg_bid:1221,avg_ask:1190, spread:193, missed:207,  vol:4080300,  logistics:'Pipeline only', dist:'—', src:'Hazira-Ankleshwar' },
+  Suvali:   { avg_bid:988, avg_ask:1236, spread:172, missed:137,  vol:4844850,  logistics:'SSLNG truck', dist:'18km from Hazira', src:'Hazira terminal truck-out' },
+  Bhadbhut: { avg_bid:1165,avg_ask:1412, spread:234, missed:40,   vol:1330400,  logistics:'Pipeline + truck', dist:'45km from Dahej', src:'HDPL spur' },
+  Bokaro:   { avg_bid:843, avg_ask:930,  spread:94,  missed:86,   vol:2045700,  logistics:'LNG truck + ISO container', dist:'~900km', src:'Dahej → ISO container rail/road' },
+};
+
+const TICKS = [
+  { hub:'DH', price:1092, chg:+1.2 },
+  { hub:'HZ', price:1148, chg:-0.4 },
+  { hub:'MS', price:1187, chg:+2.1 },
+  { hub:'AN', price:1210, chg:+0.8 },
+  { hub:'SV', price:1044, chg:-1.1 },
+  { hub:'BH', price:1240, chg:+3.4 },
+  { hub:'BK', price:910,  chg:+0.3 },
+];
+
+const MARGIN = 28;
+
+function initTicker() {
+  const bar = document.getElementById('tickerBar');
+  bar.innerHTML = TICKS.map(t => `
+    <span class="tick">
+      <span class="tick-hub">${t.hub}</span>
+      <span class="tick-price">₹${t.price}</span>
+      <span class="tick-chg ${t.chg>=0?'up':'dn'}">${t.chg>=0?'+':''}${t.chg}%</span>
+    </span>
+  `).join('');
+}
+
+function initDates() {
+  const today = new Date();
+  const start = new Date(today); start.setDate(start.getDate()+1);
+  const end = new Date(start); end.setDate(end.getDate()+30);
+  document.getElementById('delivStart').value = start.toISOString().slice(0,10);
+  document.getElementById('delivEnd').value = end.toISOString().slice(0,10);
+}
+
+function updateClock() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toTimeString().slice(0,8) + ' IST';
+}
+
+function setVol(v) {
+  document.getElementById('volume').value = v;
+  updateQuote();
+}
+
+function updateQuote() {
+  const hub = document.getElementById('deliveryPoint').value;
+  const vol = parseFloat(document.getElementById('volume').value) || 0;
+  const maxP = parseFloat(document.getElementById('maxPrice').value) || null;
+  const ct = document.getElementById('contractType').value;
+
+  document.getElementById('gcalEquiv').textContent = vol ? (vol * 0.252).toFixed(0) + '' : '—';
+
+  const qBox = document.getElementById('quoteBox');
+  const rViz = document.getElementById('routeViz');
+  const execBtn = document.getElementById('executeBtn');
+
+  if (!hub || !vol) {
+    qBox.innerHTML = '<div class="quote-loading">→ SELECT DELIVERY POINT AND VOLUME TO GENERATE QUOTE</div>';
+    rViz.style.display = 'none';
+    execBtn.disabled = true;
+    document.getElementById('depthTable').innerHTML = '<div style="color:var(--text3);font-size:11px;padding:8px 0">Select a delivery point to view depth</div>';
+    document.getElementById('hubStats').innerHTML = '<div style="color:var(--text3);font-size:11px;padding:8px 0">—</div>';
+    return;
+  }
+
+  const d = HUB_DATA[hub];
+  const basePrice = d.avg_ask + Math.floor(Math.random()*30 - 10);
+  const allIn = basePrice + MARGIN;
+  const total = allIn * vol;
+  const totalUsd = (total / 85).toFixed(0);
+  const overMax = maxP && allIn > maxP;
+
+  document.getElementById('depthHub').textContent = hub.toUpperCase();
+  renderDepth(hub, basePrice);
+  renderHubStats(hub, d);
+
+  qBox.innerHTML = `
+    <div class="quote-price-row">
+      <span class="quote-price">₹${allIn.toLocaleString('en-IN')}</span>
+      <span class="quote-unit">/MMBtu · all-in delivered</span>
+      ${overMax ? '<span style="background:#7f1d1d;color:#f87171;font-size:10px;padding:2px 8px;margin-left:auto">ABOVE MAX PRICE</span>' : '<span style="background:#166534;color:#4ade80;font-size:10px;padding:2px 8px;margin-left:auto">WITHIN LIMIT</span>'}
+    </div>
+    <div class="quote-breakdown">
+      <span class="qb-label">Commodity (market)</span><span class="qb-val">₹${basePrice.toLocaleString('en-IN')}/MMBtu</span>
+      <span class="qb-label">GasRoute logistics fee</span><span class="qb-val" style="color:var(--amber)">included</span>
+      <span class="qb-divider"></span>
+      <span class="qb-label">Volume</span><span class="qb-val">${vol.toLocaleString('en-IN')} MMBtu</span>
+      <span class="qb-label">Contract</span><span class="qb-val">${ct}</span>
+      <span class="qb-label">Total (₹)</span><span class="qb-val total">₹${total.toLocaleString('en-IN')}</span>
+      <span class="qb-label">Total (USD ~)</span><span class="qb-val">$${parseInt(totalUsd).toLocaleString('en-IN')}</span>
+    </div>
+  `;
+
+  renderRoute(hub, d, ct);
+  execBtn.disabled = overMax || false;
+  document.getElementById('missedAlert').style.display = 'flex';
+  document.getElementById('missedAlertText').textContent =
+    `⚡ ${d.missed} missed trade sessions at ${hub} detected in IGX data · Avg spread ₹${d.spread}/MMBtu · GasRoute can bridge`;
+}
+
+function renderDepth(hub, mid) {
+  const bids = [mid-5, mid-18, mid-32, mid-50, mid-70].map((p,i)=>({p,v:[4800,15000,7200,9600,3000][i]}));
+  const asks = [mid+5, mid+20, mid+38, mid+55, mid+80].map((p,i)=>({p,v:[5850,10500,8400,6000,2100][i]}));
+  const maxV = 15000;
+  let html = `<div style="display:grid;grid-template-columns:1fr 60px 60px;gap:0;font-size:10px;margin-bottom:6px">
+    <div style="color:var(--text3)">PRICE ₹</div><div style="color:var(--text3);text-align:right">VOL</div><div style="color:var(--text3);text-align:right">SIDE</div></div>`;
+  asks.slice().reverse().forEach(a=>{
+    const w = (a.v/maxV*100).toFixed(0);
+    html += `<div class="depth-row"><div class="depth-bar ask" style="width:${w}%"></div>
+      <span class="depth-price ask">₹${a.p.toLocaleString()}</span>
+      <span class="depth-vol" style="text-align:right">${(a.v/1000).toFixed(1)}K</span>
+      <span class="depth-vol" style="text-align:right;color:var(--red)">ASK</span></div>`;
+  });
+  html += `<div style="border-top:1px solid var(--amber-dim);margin:4px 0;padding:2px 0;color:var(--amber);font-size:10px;text-align:center">— SPREAD —</div>`;
+  bids.forEach(b=>{
+    const w = (b.v/maxV*100).toFixed(0);
+    html += `<div class="depth-row"><div class="depth-bar bid" style="width:${w}%"></div>
+      <span class="depth-price bid">₹${b.p.toLocaleString()}</span>
+      <span class="depth-vol" style="text-align:right">${(b.v/1000).toFixed(1)}K</span>
+      <span class="depth-vol" style="text-align:right;color:var(--green)">BID</span></div>`;
+  });
+  document.getElementById('depthTable').innerHTML = html;
+}
+
+function renderHubStats(hub, d) {
+  document.getElementById('hubStats').innerHTML = `
+    <div class="stat-row"><span class="stat-label">Missed trades (hist.)</span><span class="stat-val hl">${d.missed.toLocaleString()}</span></div>
+    <div class="stat-row"><span class="stat-label">Missed vol (MMBtu)</span><span class="stat-val">${(d.vol/1e6).toFixed(2)}M</span></div>
+    <div class="stat-row"><span class="stat-label">Avg missed spread</span><span class="stat-val hl">₹${d.spread}/MMBtu</span></div>
+    <div class="stat-row"><span class="stat-label">Logistics mode</span><span class="stat-val">${d.logistics}</span></div>
+    <div class="stat-row"><span class="stat-label">Supply source</span><span class="stat-val">${d.src}</span></div>
+  `;
+}
+
+function renderRoute(hub, d, ct) {
+  const rViz = document.getElementById('routeViz');
+  const isTruck = d.logistics.includes('truck');
+  const isBoth = d.logistics.includes('+');
+  rViz.style.display = 'block';
+
+  let nodes = [];
+  if (hub === 'Bokaro') {
+    nodes = [
+      {label:'ORIGIN', name:'Dahej', dot:''},
+      {line:'Pipeline →', icon:''},
+      {label:'TRANSIT', name:'Hazira', dot:''},
+      {line:'ISO Container', icon:''},
+      {label:'DELIVERY', name:'Bokaro', dot:'end'},
+    ];
+  } else if (isTruck && isBoth) {
+    nodes = [
+      {label:'LNG TERMINAL', name:hub==='Suvali'?'Hazira':'Dahej', dot:''},
+      {line:'Pipeline', icon:''},
+      {label:'REGAS NODE', name:hub==='Suvali'?'Suvali Depot':hub, dot:''},
+      {line:'SSLNG Truck', icon:''},
+      {label:'DELIVERY', name:hub, dot:'end'},
+    ];
+  } else {
+    nodes = [
+      {label:'SOURCE', name:'Dahej', dot:''},
+      {line:'Pipeline (GGCL/GAIL)', icon:''},
+      {label:'DELIVERY', name:hub, dot:'end'},
+    ];
+  }
+
+  let html = '';
+  nodes.forEach(n => {
+    if (n.line) {
+      html += `<div class="route-line"><span class="route-line-label">${n.line}</span></div>`;
+    } else {
+      html += `<div class="route-node">
+        <div><span class="route-node-dot ${n.dot}"></span></div>
+        <div class="route-node-label">${n.label}</div>
+        <div class="route-node-name">${n.name}</div>
+      </div>`;
+    }
+  });
+  document.getElementById('routeNodes').innerHTML = html;
+}
+
+function openConfirm() {
+  const hub = document.getElementById('deliveryPoint').value;
+  const vol = parseFloat(document.getElementById('volume').value);
+  const ct = document.getElementById('contractType').value;
+  const d = HUB_DATA[hub];
+  const basePrice = d.avg_ask + Math.floor(Math.random()*30 - 10);
+  const allIn = basePrice + MARGIN;
+  const total = allIn * vol;
+  const ref = document.getElementById('buyerRef').value || ('GR-' + Date.now().toString().slice(-6));
+  document.getElementById('buyerRef').value = ref;
+
+  window._pendingOrder = { hub, vol, ct, allIn, total, ref, basePrice };
+
+  document.getElementById('confirmLines').innerHTML = `
+    <div class="confirm-line"><span class="k">Order Ref</span><span class="v">${ref}</span></div>
+    <div class="confirm-line"><span class="k">Delivery Point</span><span class="v">${hub}</span></div>
+    <div class="confirm-line"><span class="k">Contract Type</span><span class="v">${ct}</span></div>
+    <div class="confirm-line"><span class="k">Volume</span><span class="v">${vol.toLocaleString('en-IN')} MMBtu</span></div>
+    <div class="confirm-line"><span class="k">Price (all-in)</span><span class="v big">₹${allIn.toLocaleString('en-IN')}/MMBtu</span></div>
+    <div class="confirm-line"><span class="k">Total Value</span><span class="v">₹${total.toLocaleString('en-IN')}</span></div>
+    <div class="confirm-line"><span class="k">Logistics arranged by</span><span class="v">GasRoute (opaque)</span></div>
+    <div class="confirm-line"><span class="k">Delivery Start</span><span class="v">${document.getElementById('delivStart').value}</span></div>
+  `;
+  document.getElementById('confirmOverlay').classList.add('active');
+}
+
+function closeConfirm() {
+  document.getElementById('confirmOverlay').classList.remove('active');
+}
+
+function submitOrder() {
+  closeConfirm();
+  const o = window._pendingOrder;
+  const now = new Date().toTimeString().slice(0,8);
+  const tbody = document.getElementById('orderHistory');
+  if (tbody.querySelector('td[colspan]')) tbody.innerHTML = '';
+  tbody.insertAdjacentHTML('afterbegin', `
+    <tr>
+      <td style="color:var(--amber)">${o.ref}</td>
+      <td>${o.hub}</td>
+      <td>${o.ct}</td>
+      <td>${o.vol.toLocaleString('en-IN')}</td>
+      <td style="color:var(--amber)">₹${o.allIn.toLocaleString('en-IN')}</td>
+      <td>₹${o.total.toLocaleString('en-IN')}</td>
+      <td><span class="status-badge executing">EXECUTING</span></td>
+      <td>${now}</td>
+    </tr>
+  `);
+  document.getElementById('successRef').textContent = 'REF: ' + o.ref;
+  document.getElementById('successSub').textContent =
+    `${o.vol.toLocaleString()} MMBtu @ ₹${o.allIn}/MMBtu · ${o.hub} · GasRoute is booking pipeline capacity and logistics now`;
+  document.getElementById('successOverlay').classList.add('active');
+  setTimeout(() => {
+    const row = tbody.querySelector('.status-badge.executing');
+    if (row) { row.className = 'status-badge matched'; row.textContent = 'MATCHED'; }
+  }, 4000);
+}
+
+function closeSuccess() {
+  document.getElementById('successOverlay').classList.remove('active');
+}
+
+function initMissedFeed() {
+  const feed = document.getElementById('missedFeed');
+  const items = [
+    { hub:'Dahej', vol:'5,000', spread:188, ago:'2m' },
+    { hub:'Mhaskal', vol:'15,000', spread:160, ago:'7m' },
+    { hub:'Suvali', vol:'9,900', spread:50, ago:'11m' },
+    { hub:'Hazira', vol:'7,200', spread:130, ago:'18m' },
+    { hub:'Ankot', vol:'3,600', spread:210, ago:'25m' },
+  ];
+  feed.innerHTML = items.map(i => `
+    <div style="display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid var(--border)">
+      <span style="color:var(--text3)">${i.ago} ago</span>
+      <span style="color:var(--text2)">${i.hub}</span>
+      <span style="color:var(--text3)">${i.vol} MMBtu</span>
+      <span style="color:var(--amber)">₹${i.spread} spread</span>
+    </div>
+  `).join('');
+}
+
+initTicker();
+initDates();
+initMissedFeed();
+setInterval(updateClock, 1000);
+updateClock();
+</script>

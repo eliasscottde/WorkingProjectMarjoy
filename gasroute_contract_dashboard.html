@@ -1,0 +1,619 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080806;--bg1:#0f0e0c;--bg2:#161513;--bg3:#1e1c19;--bg4:#272420;--bg5:#302d28;
+  --amber:#e8980a;--amber2:#f5aa18;--amber3:#ffc040;--amber-dim:#6b4408;--amber-pale:#1a0e02;
+  --green:#3d9e52;--green2:#50c468;--green-dim:#0d2814;
+  --red:#c43838;--red2:#e04848;--red-dim:#2e0c0c;
+  --yellow:#c8a020;--yellow-dim:#2a1e04;
+  --cyan:#1ab8cc;--blue:#2878d4;--blue-dim:#081830;
+  --text:#e8dcc8;--text2:#a89880;--text3:#706050;--text4:#483e34;
+  --border:rgba(255,255,255,0.07);
+  --mono:'IBM Plex Mono',monospace;
+}
+html,body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:11px;line-height:1.4;min-height:100vh}
+
+/* TOP */
+.top{height:34px;background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 14px;position:sticky;top:0;z-index:50}
+.logo{font-size:13px;font-weight:600;color:var(--amber);letter-spacing:.1em}
+.logo span{color:var(--text3);font-weight:300}
+.top-r{display:flex;align-items:center;gap:16px;font-size:10px;color:var(--text3)}
+.pip{width:5px;height:5px;border-radius:50%;background:var(--green2);display:inline-block;margin-right:4px;animation:pip 2s infinite}
+@keyframes pip{0%,100%{opacity:1}50%{opacity:.2}}
+
+/* NAV */
+.nav{display:flex;background:var(--bg1);border-bottom:1px solid var(--border);padding:0 14px;gap:0}
+.nt{padding:8px 14px;font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;letter-spacing:.06em;text-transform:uppercase;font-family:var(--mono);transition:color .12s}
+.nt.active{color:var(--amber);border-bottom-color:var(--amber)}
+.nt:hover:not(.active){color:var(--text2)}
+
+/* SHELL */
+.shell{display:none}.shell.active{display:block}
+
+/* LAYOUT */
+.page{padding:16px}
+.sh{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--amber);border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:baseline}
+.sh span{color:var(--text4);font-size:9px;text-transform:none;letter-spacing:.02em}
+
+/* PORTFOLIO HEADER STATS */
+.port-stats{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:18px}
+.ps-cell{background:var(--bg2);border:1px solid var(--border);padding:10px 12px;text-align:center}
+.ps-val{font-size:18px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1}
+.ps-val.am{color:var(--amber3)}.ps-val.g{color:var(--green2)}.ps-val.r{color:var(--red2)}.ps-val.c{color:var(--cyan)}.ps-val.y{color:var(--yellow)}
+.ps-lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-top:4px}
+
+/* CONTRACT TABLE VIEW */
+.ctable{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:20px}
+.ctable th{text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:400;white-space:nowrap;background:var(--bg2)}
+.ctable td{padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:middle;white-space:nowrap}
+.ctable tr:hover td{background:var(--bg3);cursor:pointer}
+.ctable tr.selected td{background:var(--bg3);border-left:2px solid var(--amber)}
+
+/* RISK BADGES */
+.rb{display:inline-block;padding:2px 7px;font-size:9px;letter-spacing:.05em;font-weight:500}
+.rb.low{background:var(--green-dim);color:var(--green2)}
+.rb.med{background:var(--yellow-dim);color:var(--yellow)}
+.rb.high{background:var(--red-dim);color:var(--red2)}
+.rb.none{background:var(--bg4);color:var(--text3);border:1px solid var(--bg5)}
+
+/* STATUS */
+.stat-dot{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:5px}
+.stat-dot.active{background:var(--green2)}.stat-dot.expiring{background:var(--yellow);animation:pip 1.2s infinite}
+.stat-dot.expired{background:var(--red2)}.stat-dot.pending{background:var(--text3)}
+
+/* CONTRACT DETAIL PANEL */
+.detail-panel{background:var(--bg2);border:1px solid var(--border);border-top:2px solid var(--amber);padding:0;margin-top:4px}
+.dp-tabs{display:flex;background:var(--bg1);border-bottom:1px solid var(--border)}
+.dp-tab{padding:7px 14px;font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;font-family:var(--mono);letter-spacing:.05em;text-transform:uppercase;transition:color .12s}
+.dp-tab.active{color:var(--amber);border-bottom-color:var(--amber)}
+.dp-tab:hover:not(.active){color:var(--text2)}
+.dp-body{padding:16px;display:none}.dp-body.active{display:block}
+
+/* DETAIL GRID */
+.d2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.d3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.info-block{background:var(--bg3);padding:10px 12px}
+.ib-label{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+.ib-val{font-size:13px;color:var(--text);font-weight:500}
+.ib-val.am{color:var(--amber)}.ib-val.g{color:var(--green2)}.ib-val.r{color:var(--red2)}
+
+/* TIMELINE BAR */
+.timeline-wrap{margin-bottom:16px}
+.tl-bar{height:14px;background:var(--bg4);position:relative;margin:6px 0 3px;display:flex;overflow:hidden}
+.tl-elapsed{background:var(--green-dim)}
+.tl-remaining{background:var(--amber-dim)}
+.tl-expired{background:var(--red-dim)}
+.tl-label{position:absolute;top:50%;transform:translateY(-50%);font-size:9px;color:var(--text2);padding:0 4px;white-space:nowrap}
+.tl-marks{display:flex;justify-content:space-between;font-size:8px;color:var(--text4)}
+
+/* RISK PANEL */
+.risk-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px}
+.risk-card{background:var(--bg3);padding:10px 12px;border-left:3px solid}
+.risk-card.low{border-color:var(--green)}.risk-card.med{border-color:var(--yellow)}.risk-card.high{border-color:var(--red)}
+.rc-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
+.rc-name{font-size:11px;color:var(--text);font-weight:500}
+.rc-score{font-size:9px;padding:1px 6px}
+.rc-score.low{background:var(--green-dim);color:var(--green2)}.rc-score.med{background:var(--yellow-dim);color:var(--yellow)}.rc-score.high{background:var(--red-dim);color:var(--red2)}
+.rc-desc{font-size:10px;color:var(--text3);line-height:1.5}
+.rc-action{margin-top:6px;font-size:9px;color:var(--amber);cursor:pointer}
+.rc-action:hover{color:var(--amber2)}
+
+/* OBLIGATION TABLE */
+.ob-table{width:100%;border-collapse:collapse;font-size:11px}
+.ob-table th{text-align:left;padding:5px 8px;border-bottom:1px solid var(--border);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:400}
+.ob-table td{padding:6px 8px;border-bottom:1px solid var(--border);color:var(--text2)}
+.ob-table tr:hover td{background:var(--bg4)}
+.ob-status{font-size:9px;padding:1px 6px}
+.ob-status.ok{background:var(--green-dim);color:var(--green2)}.ob-status.due{background:var(--yellow-dim);color:var(--yellow)}.ob-status.overdue{background:var(--red-dim);color:var(--red2)}.ob-status.future{background:var(--bg4);color:var(--text3);border:1px solid var(--bg5)}
+
+/* PERF CHART */
+.perf-bars{display:flex;gap:3px;align-items:flex-end;height:60px;margin:8px 0 4px}
+.pb{flex:1;min-height:2px;position:relative;cursor:pointer}
+.pb:hover::after{content:attr(data-v);position:absolute;bottom:calc(100%+3px);left:50%;transform:translateX(-50%);font-size:9px;background:var(--bg4);color:var(--text);padding:1px 4px;white-space:nowrap;pointer-events:none}
+.pb-labels{display:flex;justify-content:space-between;font-size:8px;color:var(--text4)}
+
+/* DR rows */
+.dr{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:10px}
+.dr:last-child{border-bottom:none}
+.dl{color:var(--text3)}.dv{color:var(--text2);font-variant-numeric:tabular-nums}
+.dv.am{color:var(--amber)}.dv.g{color:var(--green2)}.dv.r{color:var(--red2)}
+
+/* MODAL */
+.modal-wrap{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;align-items:center;justify-content:center}
+.modal-wrap.open{display:flex}
+.modal-box{background:var(--bg2);border:1px solid var(--amber-dim);width:520px;max-height:80vh;display:flex;flex-direction:column}
+.modal-bar{height:28px;background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 12px;flex-shrink:0}
+.modal-title{font-size:10px;font-weight:500;color:var(--amber);letter-spacing:.07em;text-transform:uppercase}
+.mc-btn{background:none;border:1px solid var(--border);color:var(--text3);font-family:var(--mono);font-size:9px;padding:1px 6px;cursor:pointer}
+.mc-btn:hover{color:var(--red2);border-color:var(--red-dim);background:var(--red-dim)}
+.modal-body{padding:14px;overflow-y:auto;flex:1}
+
+/* RENEWAL ALERT */
+.renewal-banner{background:var(--yellow-dim);border:1px solid var(--yellow);padding:8px 12px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;font-size:10px}
+.rb-text{color:var(--yellow)}.rb-action{padding:4px 12px;background:var(--yellow);color:var(--bg);font-family:var(--mono);font-size:9px;font-weight:600;border:none;cursor:pointer;letter-spacing:.06em}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="logo">GASROUTE <span>// CONTRACT PORTFOLIO</span></div>
+  <div class="top-r">
+    <span><span class="pip"></span>Live</span>
+    <span id="clk">--:--:--</span>
+    <span style="color:var(--text2)">ARVIND-TX · MBR-0041</span>
+  </div>
+</div>
+
+<div class="nav">
+  <button class="nt active" onclick="st('portfolio',this)">PORTFOLIO</button>
+  <button class="nt" onclick="st('calendar',this)">OBLIGATION CALENDAR</button>
+  <button class="nt" onclick="st('risk',this)">RISK MATRIX</button>
+</div>
+
+<!-- ══ PORTFOLIO ══ -->
+<div class="shell active" id="tab-portfolio">
+<div class="page">
+
+  <div class="sh" style="margin-bottom:14px">CONTRACT PORTFOLIO — ARVIND TEXTILES LTD. <span>5 contracts · click any row to inspect</span></div>
+
+  <!-- Portfolio header stats -->
+  <div class="port-stats">
+    <div class="ps-cell"><div class="ps-val am" id="totalVal">—</div><div class="ps-lbl">Total Contract Value (₹)</div></div>
+    <div class="ps-cell"><div class="ps-val g">5</div><div class="ps-lbl">Active Contracts</div></div>
+    <div class="ps-cell"><div class="ps-val g" id="totalSav">—</div><div class="ps-lbl">Portfolio Saving vs Market</div></div>
+    <div class="ps-cell"><div class="ps-val y">1</div><div class="ps-lbl">Expiring in 30 Days</div></div>
+    <div class="ps-cell"><div class="ps-val r">2</div><div class="ps-lbl">High Risk Flags</div></div>
+    <div class="ps-cell"><div class="ps-val c" id="totalVol">—</div><div class="ps-lbl">Total MMBtu Under Contract</div></div>
+  </div>
+
+  <!-- Renewal banner -->
+  <div class="renewal-banner">
+    <div class="rb-text">⚠ GSA-2026-SHELL-ARVIND-07 expires in <strong>18 days</strong> — renewal window opens now. Market price trending up — early renewal recommended.</div>
+    <button class="rb-action" onclick="openRenewal()">INITIATE RENEWAL →</button>
+  </div>
+
+  <!-- Contract table -->
+  <table class="ctable" id="ctable">
+    <thead>
+      <tr>
+        <th>Ref</th>
+        <th>Counterparty</th>
+        <th>Type</th>
+        <th>Hub / Route</th>
+        <th>Volume (MMBtu)</th>
+        <th>Locked ₹/MMBtu</th>
+        <th>Market ₹/MMBtu</th>
+        <th>Saving (₹)</th>
+        <th>Start</th>
+        <th>End</th>
+        <th>Days Left</th>
+        <th>T-o-P</th>
+        <th>Mode</th>
+        <th>Overall Risk</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody id="ctbody"></tbody>
+  </table>
+
+  <!-- Detail panel -->
+  <div class="detail-panel" id="detailPanel" style="display:none">
+    <div class="dp-tabs">
+      <button class="dp-tab active" onclick="dpTab('overview',this)">OVERVIEW</button>
+      <button class="dp-tab" onclick="dpTab('risk',this)">RISK FACTORS</button>
+      <button class="dp-tab" onclick="dpTab('obligations',this)">OBLIGATIONS</button>
+      <button class="dp-tab" onclick="dpTab('performance',this)">PERFORMANCE</button>
+      <button class="dp-tab" onclick="dpTab('docs',this)">DOCUMENTS</button>
+    </div>
+    <div class="dp-body active" id="dpb-overview"></div>
+    <div class="dp-body" id="dpb-risk"></div>
+    <div class="dp-body" id="dpb-obligations"></div>
+    <div class="dp-body" id="dpb-performance"></div>
+    <div class="dp-body" id="dpb-docs"></div>
+  </div>
+
+</div>
+</div>
+
+<!-- ══ OBLIGATION CALENDAR ══ -->
+<div class="shell" id="tab-calendar">
+<div class="page">
+  <div class="sh">OBLIGATION CALENDAR <span>all contracts · next 90 days</span></div>
+  <div id="calContent"></div>
+</div>
+</div>
+
+<!-- ══ RISK MATRIX ══ -->
+<div class="shell" id="tab-risk">
+<div class="page">
+  <div class="sh">RISK MATRIX <span>across all active contracts</span></div>
+  <div id="riskContent"></div>
+</div>
+</div>
+
+<!-- RENEWAL MODAL -->
+<div class="modal-wrap" id="renewalModal">
+  <div class="modal-box">
+    <div class="modal-bar"><div class="modal-title">INITIATE RENEWAL — GSA-2026-SHELL-ARVIND-07</div><button class="mc-btn" onclick="document.getElementById('renewalModal').classList.remove('open')">✕</button></div>
+    <div class="modal-body">
+      <div style="font-size:10px;color:var(--text3);font-style:italic;margin-bottom:12px;padding:6px 8px;background:var(--bg3);border-left:2px solid var(--amber-dim)">Contract expires 03 May 2026 · 18 days remaining · Early renewal locks current logistics fee rate</div>
+      <div class="d3" style="margin-bottom:12px">
+        <div class="info-block"><div class="ib-label">Current locked price</div><div class="ib-val am">₹1,080/MMBtu</div></div>
+        <div class="info-block"><div class="ib-label">Market today</div><div class="ib-val" id="rMkt">₹1,148/MMBtu</div></div>
+        <div class="info-block"><div class="ib-label">GasRoute renewal quote</div><div class="ib-val g">₹1,104/MMBtu</div></div>
+      </div>
+      <div class="dr"><span class="dl">Renewal volume</span><span class="dv">62,000 MMBtu</span></div>
+      <div class="dr"><span class="dl">Proposed period</span><span class="dv">01 May – 31 May 2026</span></div>
+      <div class="dr"><span class="dl">Take-or-pay</span><span class="dv">90%</span></div>
+      <div class="dr" style="margin-bottom:12px"><span class="dl">Logistics mode</span><span class="dv">Pipeline (GGCL) · truck backup</span></div>
+      <button style="width:100%;padding:10px;background:var(--amber);color:var(--bg);font-family:var(--mono);font-size:12px;font-weight:600;border:none;cursor:pointer;letter-spacing:.07em;margin-top:8px" onclick="alert('Renewal submitted — GasRoute will confirm within 2 hours.');document.getElementById('renewalModal').classList.remove('open')">SUBMIT RENEWAL REQUEST →</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── UTILS ──────────────────────────────────────────────
+function fmt(n){return Math.round(Number(n)).toLocaleString('en-US');}
+function fmtR(n){return '₹'+fmt(n);}
+
+setInterval(()=>{document.getElementById('clk').textContent=new Date().toTimeString().slice(0,8);},1000);
+
+// ─── TABS ────────────────────────────────────────────────
+function st(id,btn){
+  document.querySelectorAll('.shell').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nt').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  btn.classList.add('active');
+  if(id==='calendar') renderCal();
+  if(id==='risk') renderRiskMatrix();
+}
+
+// ─── MARKET ──────────────────────────────────────────────
+let mkt=1148;
+setInterval(()=>{mkt=1148+Math.round((Math.random()-.5)*10);updatePortStats();},3000);
+
+// ─── CONTRACT DATA ────────────────────────────────────────
+const CONTRACTS=[
+  {
+    ref:'GSA-2026-SHELL-ARVIND-07',
+    counterparty:'Shell Energy India Pvt. Ltd.',
+    type:'OTC · Gas Supply Agreement',
+    hub:'Hazira LNG Terminal → Naroda, Ahmedabad',
+    vol:62000,locked:1080,start:'2026-04-01',end:'2026-05-03',
+    top:90,mode:'Pipeline (GGCL)',
+    status:'expiring',
+    risks:{price:'low',pipeline:'low',regulatory:'med',counterparty:'low',monsoon:'low',top:'low'},
+    overallRisk:'med',
+    notes:'Expiring in 18 days. Renewal recommended. Pipeline capacity firm-booked through expiry.',
+    obligations:[
+      {name:'Day-ahead nomination',freq:'Daily',next:'Tomorrow 13:00',status:'ok'},
+      {name:'Monthly volume report',freq:'Monthly',next:'30 Apr 2026',status:'ok'},
+      {name:'Imbalance settlement',freq:'Monthly',next:'07 May 2026',status:'future'},
+      {name:'Contract renewal decision',freq:'One-time',next:'03 May 2026',status:'due'},
+    ],
+    docs:['GSA-2026-SHELL-ARVIND-07.pdf','GGCL_GTA_2026.pdf','Pipeline_confirmation_Apr26.pdf']
+  },
+  {
+    ref:'GR-2026-031',
+    counterparty:'Shell Energy India Pvt. Ltd.',
+    type:'GasRoute Logistics Order',
+    hub:'Hazira → Naroda Plant',
+    vol:62000,locked:1080,start:'2026-04-01',end:'2026-04-30',
+    top:90,mode:'Pipeline (GGCL)',
+    status:'active',
+    risks:{price:'low',pipeline:'low',regulatory:'low',counterparty:'low',monsoon:'low',top:'low'},
+    overallRisk:'low',
+    notes:'Flowing. Nomination confirmed. No active OFO. Backup truck pre-booked.',
+    obligations:[
+      {name:'Day-ahead nomination',freq:'Daily',next:'Tomorrow 13:00',status:'ok'},
+      {name:'Imbalance report',freq:'Monthly',next:'07 May 2026',status:'future'},
+    ],
+    docs:['GR-2026-031_confirmation.pdf']
+  },
+  {
+    ref:'GR-2026-024',
+    counterparty:'RLNG Markets Pvt. Ltd.',
+    type:'GasRoute Logistics Order',
+    hub:'Dahej → Naroda Plant',
+    vol:24000,locked:1055,start:'2026-04-10',end:'2026-04-16',
+    top:90,mode:'SSLNG Truck (3 tankers)',
+    status:'active',
+    risks:{price:'low',pipeline:'med',regulatory:'low',counterparty:'low',monsoon:'low',top:'med'},
+    overallRisk:'med',
+    notes:'Trucks in transit. T-o-P floor watch — only 40% delivered vs 57% elapsed. Risk of penalty if final 2 deliveries delayed.',
+    obligations:[
+      {name:'Delivery confirmation',freq:'Per delivery',next:'16 Apr 14:00',status:'due'},
+      {name:'BOG shrinkage report',freq:'Per delivery',next:'17 Apr 2026',status:'future'},
+      {name:'T-o-P volume check',freq:'Weekly',next:'16 Apr 2026',status:'due'},
+    ],
+    docs:['GR-2026-024_dispatch_note.pdf','BOG_estimation_Apr26.pdf']
+  },
+  {
+    ref:'GR-2026-017',
+    counterparty:'GAIL (India) Ltd.',
+    type:'GasRoute Logistics Order',
+    hub:'Mhaskal Hub → Naroda Plant',
+    vol:38000,locked:1095,start:'2026-04-22',end:'2026-05-22',
+    top:90,mode:'Pipeline (DUPL mainline)',
+    status:'pending',
+    risks:{price:'low',pipeline:'high',regulatory:'med',counterparty:'low',monsoon:'med',top:'low'},
+    overallRisk:'high',
+    notes:'DUPL pipeline moderate capacity. Pre-monsoon period — terminal throughput restrictions possible from Jun 10. Backup truck booking in progress.',
+    obligations:[
+      {name:'Firm capacity booking',freq:'One-time',next:'18 Apr 2026',status:'due'},
+      {name:'Day-ahead nomination',freq:'Daily',next:'22 Apr 2026',status:'future'},
+      {name:'Monsoon contingency plan',freq:'One-time',next:'25 Apr 2026',status:'future'},
+    ],
+    docs:['GR-2026-017_booking_req.pdf']
+  },
+  {
+    ref:'GSA-2025-GAIL-ARVIND-12',
+    counterparty:'GAIL (India) Ltd.',
+    type:'OTC · Long-term GSA',
+    hub:'KG Basin → Ahmedabad',
+    vol:155000,locked:980,start:'2025-01-01',end:'2025-12-31',
+    top:85,mode:'Pipeline (RGTIL + GAIL HVJ)',
+    status:'expired',
+    risks:{price:'none',pipeline:'none',regulatory:'none',counterparty:'none',monsoon:'none',top:'none'},
+    overallRisk:'none',
+    notes:'Expired 31 Dec 2025. Fully settled. No outstanding obligations.',
+    obligations:[],
+    docs:['GSA-2025-GAIL-ARVIND-12.pdf','Final_settlement_Jan26.pdf']
+  },
+];
+
+// ─── RENDER TABLE ─────────────────────────────────────────
+let selectedIdx=null;
+function renderTable(){
+  const tbody=document.getElementById('ctbody');
+  tbody.innerHTML=CONTRACTS.map((c,i)=>{
+    const daysLeft=Math.max(0,Math.round((new Date(c.end)-new Date())/86400000));
+    const saving=(mkt-c.locked)*c.vol;
+    const statusHtml=`<span class="stat-dot ${c.status}"></span>${c.status==='active'?'Active':c.status==='expiring'?'Expiring':c.status==='pending'?'Pending':'Expired'}`;
+    return`<tr onclick="selectContract(${i})" class="${selectedIdx===i?'selected':''}">
+      <td style="color:var(--amber);font-weight:500">${c.ref}</td>
+      <td style="color:var(--text2)">${c.counterparty.split(' ').slice(0,2).join(' ')}</td>
+      <td style="color:var(--text3);font-size:10px">${c.type.split('·')[0].trim()}</td>
+      <td style="color:var(--text2);font-size:10px">${c.hub.split('→')[0].trim()}</td>
+      <td style="text-align:right">${fmt(c.vol)}</td>
+      <td style="text-align:right;color:var(--amber)">${fmtR(c.locked)}</td>
+      <td style="text-align:right;color:var(--text2)">${fmtR(mkt)}</td>
+      <td style="text-align:right;color:${saving>0?'var(--green2)':'var(--red2)'}">${saving>0?'+':''}${fmtR(saving)}</td>
+      <td style="color:var(--text3);font-size:10px">${c.start}</td>
+      <td style="color:var(--text3);font-size:10px">${c.end}</td>
+      <td style="text-align:right;color:${daysLeft<30&&daysLeft>0?'var(--yellow)':daysLeft===0?'var(--text3)':'var(--text2)'}">${daysLeft>0?daysLeft:'—'}</td>
+      <td style="text-align:right">${c.top}%</td>
+      <td style="color:var(--text3);font-size:10px">${c.mode.split('(')[0].trim()}</td>
+      <td><span class="rb ${c.overallRisk}">${c.overallRisk==='none'?'N/A':c.overallRisk.toUpperCase()}</span></td>
+      <td>${statusHtml}</td>
+    </tr>`;
+  }).join('');
+}
+
+function updatePortStats(){
+  const totalVal=CONTRACTS.filter(c=>c.status!=='expired').reduce((a,c)=>a+c.locked*c.vol,0);
+  const totalSav=CONTRACTS.filter(c=>c.status!=='expired').reduce((a,c)=>a+(mkt-c.locked)*c.vol,0);
+  const totalVol=CONTRACTS.filter(c=>c.status!=='expired').reduce((a,c)=>a+c.vol,0);
+  document.getElementById('totalVal').textContent=fmtR(totalVal);
+  document.getElementById('totalSav').textContent=(totalSav>0?'+':'')+fmtR(totalSav);
+  document.getElementById('totalVol').textContent=fmt(totalVol);
+  renderTable();
+}
+updatePortStats();
+
+// ─── SELECT CONTRACT ──────────────────────────────────────
+function selectContract(i){
+  selectedIdx=i;
+  renderTable();
+  const c=CONTRACTS[i];
+  document.getElementById('detailPanel').style.display='block';
+  document.getElementById('detailPanel').scrollIntoView({behavior:'smooth',block:'nearest'});
+  renderDetailOverview(c);
+  renderDetailRisk(c);
+  renderDetailObligs(c);
+  renderDetailPerf(c);
+  renderDetailDocs(c);
+  // activate first tab
+  document.querySelectorAll('.dp-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.dp-tab')[0].classList.add('active');
+  document.querySelectorAll('.dp-body').forEach(b=>b.classList.remove('active'));
+  document.getElementById('dpb-overview').classList.add('active');
+}
+
+function dpTab(id,btn){
+  document.querySelectorAll('.dp-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.dp-body').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById('dpb-'+id).classList.add('active');
+}
+
+// ─── DETAIL TABS ──────────────────────────────────────────
+function renderDetailOverview(c){
+  const daysLeft=Math.max(0,Math.round((new Date(c.end)-new Date())/86400000));
+  const elapsed=Math.max(0,Math.round((new Date()-new Date(c.start))/86400000));
+  const total=Math.round((new Date(c.end)-new Date(c.start))/86400000);
+  const elPct=Math.min(100,(elapsed/total*100)).toFixed(1);
+  const saving=(mkt-c.locked)*c.vol;
+  document.getElementById('dpb-overview').innerHTML=`
+    <div class="d3" style="margin-bottom:14px">
+      <div class="info-block"><div class="ib-label">Counterparty</div><div class="ib-val">${c.counterparty}</div></div>
+      <div class="info-block"><div class="ib-label">Contract Type</div><div class="ib-val">${c.type}</div></div>
+      <div class="info-block"><div class="ib-label">Route</div><div class="ib-val">${c.hub}</div></div>
+    </div>
+    <div class="d3" style="margin-bottom:14px">
+      <div class="info-block"><div class="ib-label">Total Volume</div><div class="ib-val am">${fmt(c.vol)} MMBtu</div></div>
+      <div class="info-block"><div class="ib-label">Locked ₹/MMBtu</div><div class="ib-val am">${fmtR(c.locked)}</div></div>
+      <div class="info-block"><div class="ib-label">Total Contract Value</div><div class="ib-val am">${fmtR(c.locked*c.vol)}</div></div>
+    </div>
+    <div class="d3" style="margin-bottom:14px">
+      <div class="info-block"><div class="ib-label">Market ₹/MMBtu (now)</div><div class="ib-val">${fmtR(mkt)}</div></div>
+      <div class="info-block"><div class="ib-label">Portfolio Saving</div><div class="ib-val ${saving>0?'g':'r'}">${saving>0?'+':''}${fmtR(saving)}</div></div>
+      <div class="info-block"><div class="ib-label">Saving Per MMBtu</div><div class="ib-val ${saving/c.vol>0?'g':'r'}">${saving>0?'+':''}${fmtR(saving/c.vol)}</div></div>
+    </div>
+    <div class="timeline-wrap">
+      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Contract timeline — ${elPct}% elapsed · ${daysLeft} days remaining</div>
+      <div class="tl-bar">
+        <div class="tl-elapsed" style="width:${elPct}%"><span class="tl-label">${elPct}% elapsed</span></div>
+        <div class="tl-remaining" style="width:${(100-parseFloat(elPct))}%"></div>
+      </div>
+      <div class="tl-marks"><span>${c.start}</span><span>${daysLeft>0?daysLeft+' days left':'Expired'}</span><span>${c.end}</span></div>
+    </div>
+    <div class="d3" style="margin-bottom:14px">
+      <div class="info-block"><div class="ib-label">Take-or-Pay Floor</div><div class="ib-val">${c.top}% · ${fmt(c.vol*c.top/100)} MMBtu</div></div>
+      <div class="info-block"><div class="ib-label">Swing Allowance</div><div class="ib-val">±10%</div></div>
+      <div class="info-block"><div class="ib-label">Transport Mode</div><div class="ib-val">${c.mode}</div></div>
+    </div>
+    <div style="background:var(--bg3);padding:10px 12px;border-left:3px solid var(--amber-dim)">
+      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Status Notes</div>
+      <div style="font-size:11px;color:var(--text2);line-height:1.6">${c.notes}</div>
+    </div>`;
+}
+
+function renderDetailRisk(c){
+  const riskDefs={
+    price:{label:'Commodity Price Risk',desc:'GasRoute does not expose you to commodity price — logistics fee only. Your locked price is fixed.'},
+    pipeline:{label:'Pipeline Availability Risk',desc:'Risk of GAIL/GGCL/GSPL capacity cuts, OFO events, or maintenance windows affecting delivery.'},
+    regulatory:{label:'Regulatory & PNGRB Risk',desc:'Changes to tariff orders, third-party access rules, or PNGRB policy affecting transport costs or nomination rights.'},
+    counterparty:{label:'Counterparty Credit Risk',desc:'Risk of counterparty default or failure to perform under supply agreement terms.'},
+    monsoon:{label:'Monsoon / Seasonal Risk',desc:'Terminal throughput restrictions June–September. Increased truck logistics costs during monsoon season.'},
+    top:{label:'Take-or-Pay Risk',desc:'Risk of failing to nominate minimum contracted volume, triggering penalty payments on unlifted gas.'},
+  };
+  const html=Object.entries(c.risks).map(([key,level])=>{
+    const def=riskDefs[key];
+    if(!def||level==='none') return`<div class="risk-card" style="border-color:var(--text4);opacity:.5"><div class="rc-head"><span class="rc-name">${riskDefs[key]?.label||key}</span><span class="rc-score" style="background:var(--bg4);color:var(--text3)">N/A</span></div><div class="rc-desc">Not applicable for this contract.</div></div>`;
+    return`<div class="risk-card ${level}">
+      <div class="rc-head"><span class="rc-name">${def.label}</span><span class="rc-score ${level}">${level.toUpperCase()}</span></div>
+      <div class="rc-desc">${def.desc}</div>
+      ${level!=='low'?`<div class="rc-action">→ View mitigation options</div>`:''}
+    </div>`;
+  }).join('');
+  document.getElementById('dpb-risk').innerHTML=`<div class="risk-grid">${html}</div>`;
+}
+
+function renderDetailObligs(c){
+  if(!c.obligations.length){document.getElementById('dpb-obligations').innerHTML='<div style="color:var(--text3);font-size:11px;padding:8px">No outstanding obligations.</div>';return;}
+  document.getElementById('dpb-obligations').innerHTML=`
+    <table class="ob-table">
+      <thead><tr><th>Obligation</th><th>Frequency</th><th>Next Due</th><th>Status</th></tr></thead>
+      <tbody>
+        ${c.obligations.map(o=>`<tr>
+          <td style="color:var(--text)">${o.name}</td>
+          <td style="color:var(--text3)">${o.freq}</td>
+          <td style="color:var(--text2)">${o.next}</td>
+          <td><span class="ob-status ${o.status}">${o.status==='ok'?'ON TRACK':o.status==='due'?'DUE SOON':o.status==='overdue'?'OVERDUE':'UPCOMING'}</span></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+function renderDetailPerf(c){
+  const days=Math.min(20,Math.max(0,Math.round((new Date()-new Date(c.start))/86400000)));
+  const base=c.vol/(Math.round((new Date(c.end)-new Date(c.start))/86400000));
+  const bars=[...Array(Math.max(days,5))].map((_,i)=>({
+    v:Math.round(base*(0.88+Math.random()*.24)),
+    ok:Math.random()>.15
+  }));
+  const maxV=Math.max(...bars.map(b=>b.v),1);
+  document.getElementById('dpb-performance').innerHTML=`
+    <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Daily nominated vs delivered (MMBtu) — last ${bars.length} days</div>
+    <div class="perf-bars">
+      ${bars.map((b,i)=>`<div class="pb" style="height:${(b.v/maxV*100).toFixed(0)}%;background:${b.ok?'var(--green-dim)':'var(--amber-dim)'};border-top:2px solid ${b.ok?'var(--green2)':'var(--amber)'}" data-v="${fmt(b.v)} MMBtu"></div>`).join('')}
+    </div>
+    <div class="pb-labels"><span>Day 1</span><span>Today</span></div>
+    <div style="display:flex;gap:14px;font-size:10px;margin-top:8px">
+      <span><span style="display:inline-block;width:10px;height:10px;background:var(--green2);margin-right:4px;vertical-align:middle"></span>Delivered on target</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:var(--amber);margin-right:4px;vertical-align:middle"></span>Variance from nomination</span>
+    </div>
+    <div style="margin-top:14px">
+      <div class="sh" style="margin-bottom:8px">CONTRACT KPIs</div>
+      <div class="dr"><span class="dl">Avg daily delivery</span><span class="dv">${fmt(Math.round(bars.reduce((a,b)=>a+b.v,0)/bars.length))} MMBtu</span></div>
+      <div class="dr"><span class="dl">On-target delivery rate</span><span class="dv g">${(bars.filter(b=>b.ok).length/bars.length*100).toFixed(0)}%</span></div>
+      <div class="dr"><span class="dl">Imbalance events</span><span class="dv">${bars.filter(b=>!b.ok).length}</span></div>
+      <div class="dr"><span class="dl">Cumulative delivered</span><span class="dv am">${fmt(bars.reduce((a,b)=>a+b.v,0))} MMBtu</span></div>
+    </div>`;
+}
+
+function renderDetailDocs(c){
+  document.getElementById('dpb-docs').innerHTML=`
+    <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:10px">Contract documents — ${c.docs.length} files</div>
+    ${c.docs.map(d=>`<div style="display:flex;justify-content:space-between;align-items:center;padding:8px 10px;background:var(--bg3);border:1px solid var(--border);margin-bottom:6px">
+      <span style="color:var(--text2);font-size:11px">📄 ${d}</span>
+      <button style="padding:3px 10px;background:none;border:1px solid var(--border);color:var(--amber);font-family:var(--mono);font-size:9px;cursor:pointer;letter-spacing:.06em" onclick="alert('Opening ${d}')">VIEW</button>
+    </div>`).join('')}
+    <div style="margin-top:12px">
+      <button style="padding:7px 16px;background:var(--amber);color:var(--bg);font-family:var(--mono);font-size:10px;font-weight:600;border:none;cursor:pointer;letter-spacing:.06em" onclick="alert('Upload document')">+ UPLOAD DOCUMENT</button>
+    </div>`;
+}
+
+// ─── OBLIGATION CALENDAR ──────────────────────────────────
+function renderCal(){
+  const all=CONTRACTS.flatMap(c=>c.obligations.map(o=>({...o,ref:c.ref,counterparty:c.counterparty})));
+  const sorted=all.sort((a,b)=>new Date(a.next)-new Date(b.next));
+  document.getElementById('calContent').innerHTML=`
+    <table class="ob-table" style="width:100%">
+      <thead><tr><th>Due Date</th><th>Contract Ref</th><th>Obligation</th><th>Counterparty</th><th>Frequency</th><th>Status</th></tr></thead>
+      <tbody>
+        ${sorted.map(o=>`<tr>
+          <td style="color:var(--text);font-weight:500">${o.next}</td>
+          <td style="color:var(--amber)">${o.ref}</td>
+          <td style="color:var(--text2)">${o.name}</td>
+          <td style="color:var(--text3);font-size:10px">${o.counterparty.split(' ').slice(0,2).join(' ')}</td>
+          <td style="color:var(--text3)">${o.freq}</td>
+          <td><span class="ob-status ${o.status}">${o.status==='ok'?'ON TRACK':o.status==='due'?'DUE SOON':o.status==='overdue'?'OVERDUE':'UPCOMING'}</span></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+}
+
+// ─── RISK MATRIX ─────────────────────────────────────────
+function renderRiskMatrix(){
+  const riskTypes=['price','pipeline','regulatory','counterparty','monsoon','top'];
+  const riskLabels={price:'Commodity Price',pipeline:'Pipeline Availability',regulatory:'Regulatory / PNGRB',counterparty:'Counterparty Credit',monsoon:'Monsoon / Seasonal',top:'Take-or-Pay'};
+  const active=CONTRACTS.filter(c=>c.status!=='expired');
+  document.getElementById('riskContent').innerHTML=`
+    <div style="margin-bottom:16px;font-size:10px;color:var(--text3)">Risk scores across all active contracts. Click any cell to view contract detail.</div>
+    <table style="width:100%;border-collapse:collapse;font-size:11px">
+      <thead>
+        <tr>
+          <th style="text-align:left;padding:6px 10px;border-bottom:1px solid var(--border);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:400;background:var(--bg2)">Risk Type</th>
+          ${active.map(c=>`<th style="text-align:center;padding:6px 8px;border-bottom:1px solid var(--border);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:400;background:var(--bg2);white-space:nowrap">${c.ref.slice(0,16)}…</th>`).join('')}
+        </tr>
+      </thead>
+      <tbody>
+        ${riskTypes.map(rt=>`<tr>
+          <td style="padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text2)">${riskLabels[rt]}</td>
+          ${active.map(c=>`<td style="text-align:center;padding:7px 8px;border-bottom:1px solid var(--border);cursor:pointer" onclick="selectContractAndGo(${CONTRACTS.indexOf(c)})">
+            <span class="rb ${c.risks[rt]||'none'}">${c.risks[rt]==='none'||!c.risks[rt]?'—':(c.risks[rt]).toUpperCase()}</span>
+          </td>`).join('')}
+        </tr>`).join('')}
+      </tbody>
+    </table>
+    <div style="display:flex;gap:12px;margin-top:14px;font-size:10px">
+      <span><span class="rb low">LOW</span></span>
+      <span><span class="rb med">MED</span></span>
+      <span><span class="rb high">HIGH</span></span>
+      <span><span class="rb none">—</span> Not applicable</span>
+    </div>`;
+}
+
+function selectContractAndGo(i){
+  st('portfolio',document.querySelector('.nt'));
+  selectContract(i);
+}
+
+function openRenewal(){
+  document.getElementById('rMkt').textContent=fmtR(mkt)+'/MMBtu';
+  document.getElementById('renewalModal').classList.add('open');
+}
+document.getElementById('renewalModal').addEventListener('click',e=>{
+  if(e.target===document.getElementById('renewalModal')) document.getElementById('renewalModal').classList.remove('open');
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,811 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080806;--bg1:#0f0e0c;--bg2:#161513;--bg3:#1e1c19;--bg4:#272420;--bg5:#302d28;
+  --amber:#e8980a;--amber2:#f5aa18;--amber3:#ffc040;--amber-dim:#6b4408;--amber-pale:#1a0e02;
+  --green:#3d9e52;--green2:#50c468;--green-dim:#0d2814;
+  --red:#c43838;--red2:#e04848;--red-dim:#2e0c0c;
+  --cyan:#1ab8cc;
+  --text:#e8dcc8;--text2:#a89880;--text3:#706050;--text4:#483e34;
+  --border:rgba(255,255,255,0.07);
+  --mono:'IBM Plex Mono',monospace;
+}
+html,body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:11px;line-height:1.4;min-height:100vh}
+
+.top{height:34px;background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 14px;position:sticky;top:0;z-index:50}
+.logo{font-size:13px;font-weight:600;color:var(--amber);letter-spacing:.1em}
+.logo span{color:var(--text3);font-weight:300}
+.top-r{display:flex;align-items:center;gap:16px;font-size:10px;color:var(--text3)}
+.pip{width:5px;height:5px;border-radius:50%;background:var(--green2);display:inline-block;margin-right:4px;animation:pip 2s infinite}
+@keyframes pip{0%,100%{opacity:1}50%{opacity:.2}}
+
+/* ── STEP BAR ── always-clickable ── */
+.step-bar{
+  background:var(--bg1);
+  border-bottom:1px solid var(--border);
+  padding:0;
+  display:flex;
+  align-items:stretch;
+  height:52px;
+  position:sticky;
+  top:34px;
+  z-index:49;
+  overflow-x:auto;
+}
+.step-bar::-webkit-scrollbar{height:0}
+
+.step-item{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  padding:0 20px;
+  flex:1;
+  min-width:130px;
+  position:relative;
+  cursor:pointer;
+  border-bottom:2px solid transparent;
+  transition:background .15s, border-color .15s;
+  user-select:none;
+  border-right:1px solid var(--border);
+}
+.step-item:last-child{border-right:none}
+.step-item:hover{background:var(--bg3)}
+.step-item.active{
+  background:var(--bg2);
+  border-bottom-color:var(--amber);
+}
+.step-item.visited .step-num{
+  background:var(--green-dim);
+  color:var(--green2);
+  border-color:var(--green);
+}
+.step-item.active .step-num{
+  background:var(--amber);
+  color:var(--bg);
+  border-color:var(--amber);
+}
+
+.step-num{
+  width:22px;height:22px;
+  border-radius:50%;
+  border:1px solid var(--text4);
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:600;
+  flex-shrink:0;
+  color:var(--text4);
+  transition:all .15s;
+}
+.step-text{display:flex;flex-direction:column;gap:1px}
+.step-label{
+  font-size:10px;font-weight:500;
+  color:var(--text3);
+  text-transform:uppercase;
+  letter-spacing:.05em;
+  transition:color .15s;
+}
+.step-item.active .step-label{color:var(--amber)}
+.step-item.visited .step-label{color:var(--text2)}
+.step-item:hover .step-label{color:var(--text)}
+.step-sub{font-size:9px;color:var(--text4);letter-spacing:.02em}
+.step-item.active .step-sub{color:var(--amber-dim)}
+.step-item.visited .step-sub{color:var(--text4)}
+
+/* keyboard shortcut hint */
+.step-kbd{
+  position:absolute;
+  top:6px;right:8px;
+  font-size:8px;
+  color:var(--text4);
+  background:var(--bg4);
+  border:1px solid var(--border);
+  padding:1px 4px;
+  letter-spacing:.04em;
+}
+
+/* MAIN */
+.flow-layout{display:grid;grid-template-columns:1fr 280px;min-height:calc(100vh - 86px)}
+.flow-main{padding:20px;overflow-y:auto}
+.flow-side{background:var(--bg1);border-left:1px solid var(--border);padding:14px;overflow-y:auto}
+
+.step-panel{display:none}.step-panel.active{display:block}
+
+.step-head{margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid var(--border)}
+.step-tag{font-size:9px;color:var(--amber);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px}
+.step-head h2{font-size:16px;font-weight:600;color:var(--text);letter-spacing:.01em;margin-bottom:4px}
+.step-head p{font-size:11px;color:var(--text3);font-style:italic;line-height:1.6}
+
+/* NAV FOOTER */
+.step-nav{display:flex;gap:10px;align-items:center;margin-top:24px;padding-top:16px;border-top:1px solid var(--border)}
+.btn-next{padding:10px 22px;background:var(--amber);color:var(--bg);font-family:var(--mono);font-size:11px;font-weight:600;border:none;cursor:pointer;letter-spacing:.07em;text-transform:uppercase;transition:background .15s}
+.btn-next:hover{background:var(--amber2)}
+.btn-back{padding:10px 16px;background:none;border:1px solid var(--border);color:var(--text3);font-family:var(--mono);font-size:11px;cursor:pointer;letter-spacing:.05em;transition:all .12s}
+.btn-back:hover{color:var(--text2);border-color:var(--text4)}
+.btn-skip{padding:10px 16px;background:none;border:none;color:var(--text4);font-family:var(--mono);font-size:10px;cursor:pointer;margin-left:auto;letter-spacing:.04em}
+.btn-skip:hover{color:var(--text3)}
+
+/* form */
+.flabel{font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);display:block;margin-bottom:3px}
+.fc{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:7px 10px;outline:none;-webkit-appearance:none;appearance:none;transition:border-color .15s}
+.fc:focus{border-color:var(--amber-dim)}.fc option{background:var(--bg2)}
+.fg{margin-bottom:12px}.fr2{display:grid;grid-template-columns:1fr 1fr;gap:12px}.fr3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.tbtn{padding:7px 16px;font-size:10px;font-family:var(--mono);background:var(--bg3);border:1px solid var(--border);color:var(--text3);cursor:pointer;letter-spacing:.06em;transition:all .15s;text-transform:uppercase}
+.tbtn.active{background:var(--amber);color:var(--bg);border-color:var(--amber)}
+.tbtn:not(.active):hover{color:var(--text2);background:var(--bg4)}
+.trow{display:flex;gap:0;margin-bottom:10px}
+
+.upload-z{border:1px dashed var(--bg5);padding:22px;text-align:center;cursor:pointer;background:var(--bg2);margin-bottom:12px;position:relative;transition:all .15s}
+.upload-z:hover{border-color:var(--amber-dim)}.upload-z input{position:absolute;inset:0;opacity:0;cursor:pointer}
+
+/* route cards */
+.route-cards{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px}
+.rc{background:var(--bg2);border:1px solid var(--border);padding:14px;cursor:pointer;transition:all .15s;position:relative}
+.rc:hover{border-color:var(--amber-dim);background:var(--bg3)}
+.rc.selected{border-color:var(--amber);background:var(--bg3)}
+.rc.selected::before{content:'✓';position:absolute;top:8px;right:10px;font-size:12px;color:var(--amber)}
+.rc-mode{font-size:10px;font-weight:600;color:var(--amber2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:8px}
+.rc-fee{font-size:26px;font-weight:600;color:var(--amber3);margin-bottom:2px;font-variant-numeric:tabular-nums}
+.rc-unit{font-size:10px;color:var(--text3);margin-bottom:8px}
+.rc-tag{display:inline-block;font-size:9px;padding:2px 7px;margin-bottom:8px;letter-spacing:.05em}
+.rc-tag.cheapest{background:var(--amber-pale);color:var(--amber)}
+.rc-tag.fastest{background:var(--green-dim);color:var(--green2)}
+.rc-tag.secure{background:var(--cyan-dim);color:var(--cyan)}
+.rc-detail{font-size:10px;color:var(--text3);line-height:1.6}
+.rc-avail{margin-top:8px;font-size:9px;text-transform:uppercase;letter-spacing:.05em}
+.rc-avail.ok{color:var(--green2)}.rc-avail.low{color:var(--amber)}
+
+/* risk */
+.risk-card{background:var(--bg2);border:1px solid var(--border);border-left:3px solid;padding:12px 14px;margin-bottom:8px}
+.risk-card.low{border-left-color:var(--green)}.risk-card.med{border-left-color:var(--amber)}.risk-card.high{border-left-color:var(--red)}
+.rc-head{display:flex;justify-content:space-between;margin-bottom:6px}
+.rc-name{font-size:11px;font-weight:500;color:var(--text)}
+.rc-lvl{font-size:9px;padding:2px 6px;letter-spacing:.05em}
+.rc-lvl.low{background:var(--green-dim);color:var(--green2)}.rc-lvl.med{background:var(--amber-pale);color:var(--amber)}.rc-lvl.high{background:var(--red-dim);color:var(--red2)}
+.rc-body{font-size:10px;color:var(--text3);line-height:1.6}
+
+.ack-box{background:var(--bg2);border:1px solid var(--amber-dim);padding:14px;margin-bottom:14px;display:flex;align-items:flex-start;gap:12px;cursor:pointer}
+.ack-check{width:18px;height:18px;border:1px solid var(--border);background:var(--bg3);flex-shrink:0;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all .15s}
+.ack-check.checked{background:var(--amber);border-color:var(--amber)}
+.ack-check.checked::after{content:'✓';font-size:11px;color:var(--bg);font-weight:600}
+
+/* quote */
+.quote-box{background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--amber);padding:18px;margin-bottom:14px}
+.q-price-row{display:flex;align-items:baseline;gap:10px;margin-bottom:4px}
+.q-price{font-size:38px;font-weight:600;color:var(--amber3);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.q-unit{font-size:12px;color:var(--text3)}
+.q-grid{display:grid;grid-template-columns:1fr auto;gap:5px 20px;font-size:11px}
+.ql{color:var(--text3)}.qv{color:var(--text2);text-align:right;font-variant-numeric:tabular-nums}
+.qv.am{color:var(--amber);font-size:13px;font-weight:500}
+.qdiv{grid-column:1/-1;border-top:1px solid var(--border);margin:3px 0}
+
+.timer-row{display:flex;align-items:center;gap:10px;margin-bottom:14px;padding:10px 12px;background:var(--bg3);border:1px solid var(--border)}
+.timer-val{font-size:18px;font-weight:600;color:var(--amber3);font-variant-numeric:tabular-nums;min-width:48px}
+.timer-val.urgent{color:var(--red2)}
+.timer-track{flex:1;height:4px;background:var(--bg5)}
+.timer-fill{height:100%;background:var(--amber);transition:width 1s linear}
+.timer-fill.urgent{background:var(--red2)}
+
+/* confirm */
+.confirm-hero{text-align:center;padding:24px 0 18px;border-bottom:1px solid var(--border);margin-bottom:18px}
+.ch-ref{font-size:11px;color:var(--amber);letter-spacing:.08em;margin-bottom:4px}
+.ch-title{font-size:20px;font-weight:600;color:var(--green2);margin-bottom:4px}
+.ch-sub{font-size:11px;color:var(--text3)}
+.tl-row{display:flex;gap:14px;padding:9px 0;border-bottom:1px solid var(--border);font-size:11px;align-items:flex-start}
+.tl-row:last-child{border-bottom:none}
+.tl-time{min-width:120px;flex-shrink:0;color:var(--amber);font-size:10px;padding-top:1px}
+.tl-event{color:var(--text2)}
+.tl-detail{font-size:10px;color:var(--text3);margin-top:2px}
+
+/* sidebar */
+.sh{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--amber);border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:10px}
+.dr{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:10px}
+.dr:last-child{border-bottom:none}
+.dl{color:var(--text3)}.dv{color:var(--text2);font-variant-numeric:tabular-nums}
+.dv.am{color:var(--amber)}.dv.g{color:var(--green2)}
+.exec-btn{width:100%;padding:13px;background:var(--amber);color:var(--bg);font-family:var(--mono);font-size:13px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;border:none;cursor:pointer;transition:background .15s}
+.exec-btn:hover{background:var(--amber2)}
+
+/* intent summary */
+.intent-box{background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--amber-dim);padding:12px 14px;margin-bottom:16px;font-size:10px}
+.ib-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.04)}
+.ib-row:last-child{border-bottom:none}
+.ib-k{color:var(--text3)}.ib-v{color:var(--text2)}.ib-v.am{color:var(--amber)}
+
+.spin{display:inline-block;width:11px;height:11px;border:2px solid var(--bg5);border-top-color:var(--amber);border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+.parse-panel{display:none;border:1px solid var(--amber-dim);background:var(--bg2);margin-bottom:14px}
+.pp-head{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--amber-pale);border-bottom:1px solid var(--amber-dim)}
+.pp-grid{display:grid;grid-template-columns:1fr 1fr;padding:10px 12px;gap:0}
+.pf{padding:6px 0;border-bottom:1px solid var(--border)}
+.pfl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+.pfv input{background:none;border:none;border-bottom:1px solid var(--bg5);color:var(--text);font-family:var(--mono);font-size:11px;outline:none;width:100%;padding:1px 0}
+.pfv input:focus{border-bottom-color:var(--amber)}
+.pf.unc .pfl::after{content:' ⚠';color:var(--amber)}
+.pf.unc .pfv input{border-bottom-color:var(--amber-dim)}
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="logo">GASROUTE <span>// ORDER LOGISTICS</span></div>
+  <div class="top-r">
+    <span><span class="pip"></span>Capacity live</span>
+    <span id="clk">--:--:--</span>
+    <span style="color:var(--text2)">ARVIND-TX</span>
+  </div>
+</div>
+
+<!-- ── STEP BAR — all tabs always clickable ── -->
+<div class="step-bar" id="stepBar">
+  <div class="step-item active" id="si-0" onclick="goStep(0)">
+    <div class="step-num" id="sn-0">1</div>
+    <div class="step-text">
+      <div class="step-label">Intent</div>
+      <div class="step-sub">Role · Hub · Volume</div>
+    </div>
+    <div class="step-kbd">⌘1</div>
+  </div>
+  <div class="step-item" id="si-1" onclick="goStep(1)">
+    <div class="step-num" id="sn-1">2</div>
+    <div class="step-text">
+      <div class="step-label">Contract</div>
+      <div class="step-sub">Upload · Parse · Confirm</div>
+    </div>
+    <div class="step-kbd">⌘2</div>
+  </div>
+  <div class="step-item" id="si-2" onclick="goStep(2)">
+    <div class="step-num" id="sn-2">3</div>
+    <div class="step-text">
+      <div class="step-label">Route</div>
+      <div class="step-sub">Pipeline · Truck · ISO</div>
+    </div>
+    <div class="step-kbd">⌘3</div>
+  </div>
+  <div class="step-item" id="si-3" onclick="goStep(3)">
+    <div class="step-num" id="sn-3">4</div>
+    <div class="step-text">
+      <div class="step-label">Risk Review</div>
+      <div class="step-sub">Review · Acknowledge</div>
+    </div>
+    <div class="step-kbd">⌘4</div>
+  </div>
+  <div class="step-item" id="si-4" onclick="goStep(4)">
+    <div class="step-num" id="sn-4">5</div>
+    <div class="step-text">
+      <div class="step-label">Lock Quote</div>
+      <div class="step-sub">Fee · Timer · Lock</div>
+    </div>
+    <div class="step-kbd">⌘5</div>
+  </div>
+  <div class="step-item" id="si-5" onclick="goStep(5)">
+    <div class="step-num" id="sn-5">6</div>
+    <div class="step-text">
+      <div class="step-label">Execute</div>
+      <div class="step-sub">Confirm · Dispatch</div>
+    </div>
+    <div class="step-kbd">⌘6</div>
+  </div>
+</div>
+
+<div class="flow-layout">
+<div class="flow-main">
+
+<!-- ═══ STEP 1 ═══ -->
+<div class="step-panel active" id="sp-0">
+  <div class="step-head">
+    <div class="step-tag">Step 1 of 6</div>
+    <h2>Declare Your Intent</h2>
+    <p>Tell GasRoute what needs to move. Your commodity price is your business — we handle the physical logistics layer only.</p>
+  </div>
+  <div class="fr2" style="margin-bottom:14px">
+    <div><label class="flabel">I am the</label><div class="trow"><button class="tbtn active" id="rBuy" onclick="setRole('buy')">Buyer</button><button class="tbtn" id="rSell" onclick="setRole('sell')">Seller</button></div></div>
+    <div><label class="flabel">Transaction origin</label><div class="trow"><button class="tbtn active" id="mOTC" onclick="setMode('otc')">OTC</button><button class="tbtn" id="mIGX" onclick="setMode('igx')">IGX</button></div></div>
+  </div>
+  <div style="background:var(--bg2);border-left:2px solid var(--amber-dim);padding:7px 10px;font-size:10px;color:var(--text3);font-style:italic;margin-bottom:14px" id="modeNote">OTC — you have a signed bilateral agreement. GasRoute arranges the physical logistics layer only.</div>
+  <div class="fr2" style="margin-bottom:12px">
+    <div class="fg"><label class="flabel">Pickup / Source Hub</label>
+      <select class="fc" id="i_pickup" onchange="updateIntent()">
+        <option value="">— Select source —</option>
+        <option value="Dahej LNG Terminal, Gujarat">Dahej LNG Terminal</option>
+        <option value="Hazira LNG Terminal, Gujarat">Hazira LNG Terminal</option>
+        <option value="Mhaskal Hub, Maharashtra">Mhaskal Hub</option>
+        <option value="Ankot Hub, Gujarat">Ankot Hub</option>
+        <option value="KG Basin, Andhra Pradesh">KG Basin</option>
+        <option value="Bokaro Gas Field, Jharkhand">Bokaro Gas Field</option>
+        <option value="Dabhol Terminal, Maharashtra">Dabhol Terminal</option>
+      </select>
+    </div>
+    <div class="fg"><label class="flabel">Drop-off / Destination</label><input class="fc" type="text" id="i_dropoff" placeholder="e.g. Naroda Plant, Ahmedabad" oninput="updateIntent()"></div>
+  </div>
+  <div class="fr3" style="margin-bottom:14px">
+    <div class="fg"><label class="flabel">Volume (MMBtu)</label><input class="fc" type="number" id="i_vol" placeholder="e.g. 62000" oninput="updateIntent()"></div>
+    <div class="fg"><label class="flabel">Delivery From</label><input class="fc" type="date" id="i_from" onchange="updateIntent()"></div>
+    <div class="fg"><label class="flabel">Delivery To</label><input class="fc" type="date" id="i_to" onchange="updateIntent()"></div>
+  </div>
+  <div class="fr2" style="margin-bottom:16px">
+    <div class="fg"><label class="flabel">Gas Type</label><select class="fc" id="i_gas"><option>RLNG (Regasified LNG)</option><option>Domestic pipeline gas</option><option>HPHT gas (KG Basin)</option><option>APM domestic gas</option></select></div>
+    <div class="fg"><label class="flabel">Priority</label><select class="fc"><option>Standard (firm, best rate)</option><option>Urgent (dispatch &lt;24h, premium)</option><option>Scheduled (flexible, lowest cost)</option></select></div>
+  </div>
+  <div class="intent-box" id="intentSummary" style="display:none">
+    <div style="font-size:9px;color:var(--amber);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Intent Record Preview</div>
+    <div class="ib-row"><span class="ib-k">Role</span><span class="ib-v am" id="is_role">—</span></div>
+    <div class="ib-row"><span class="ib-k">Route</span><span class="ib-v am" id="is_route">—</span></div>
+    <div class="ib-row"><span class="ib-k">Volume</span><span class="ib-v" id="is_vol">—</span></div>
+    <div class="ib-row"><span class="ib-k">Period</span><span class="ib-v" id="is_period">—</span></div>
+  </div>
+  <div class="step-nav">
+    <button class="btn-next" onclick="goStep(1)">Proceed to Contract →</button>
+    <button class="btn-skip" onclick="goStep(1)">Skip to any step ↑</button>
+  </div>
+</div>
+
+<!-- ═══ STEP 2 ═══ -->
+<div class="step-panel" id="sp-1">
+  <div class="step-head">
+    <div class="step-tag">Step 2 of 6</div>
+    <h2>Upload Your Contract</h2>
+    <p>Upload or paste your signed agreement. GasRoute extracts logistics parameters only — we do not see, store, or use your commodity price.</p>
+  </div>
+  <div class="intent-box" id="s2intent"></div>
+  <div class="upload-z" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="hDrop(event)">
+    <input type="file" accept=".pdf,.docx,.txt" onchange="hFile(this.files[0])">
+    <div style="font-size:12px;color:var(--text2);margin-bottom:3px;font-weight:500" id="uzT">📄 Drop your signed contract here</div>
+    <div style="font-size:10px;color:var(--text3)">PDF · DOCX · TXT &nbsp;·&nbsp; <strong style="color:var(--amber)">or click to browse</strong></div>
+  </div>
+  <div class="fg"><label class="flabel">Or paste contract text</label><textarea class="fc" id="cText" rows="5" style="resize:vertical" placeholder="Paste any section of your GSA or bilateral supply agreement. We extract party names, delivery point, volume, and dates only.&#10;&#10;e.g. This Gas Supply Agreement is entered between Arvind Textiles Ltd. (Buyer) and Shell Energy India Pvt. Ltd. (Seller) for 62,000 MMBtu at Hazira delivery point, from 01 Apr 2026 to 30 Apr 2026..."></textarea></div>
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:14px">
+    <button style="padding:8px 20px;background:var(--amber);color:var(--bg);font-family:var(--mono);font-size:11px;font-weight:600;border:none;cursor:pointer;letter-spacing:.07em" onclick="analyse()">ANALYSE CONTRACT →</button>
+    <span style="font-size:10px;color:var(--text3);font-style:italic">Commodity price will not be extracted or stored</span>
+  </div>
+  <div style="display:none;padding:12px;background:var(--bg2);border:1px solid var(--border);margin-bottom:12px;font-size:11px;color:var(--text3);text-align:center;font-style:italic" id="ldRow"><span class="spin"></span>Parsing contract — extracting logistics parameters only...</div>
+  <div class="parse-panel" id="ppanel">
+    <div class="pp-head"><span style="font-size:11px;font-weight:500;color:var(--amber2)">REVIEW EXTRACTED FIELDS</span><span style="font-size:9px;padding:1px 6px;background:var(--amber-dim);color:var(--amber);letter-spacing:.06em">AI PARSED · CONFIRM ALL</span></div>
+    <div class="pp-grid" id="ppFields"></div>
+    <div style="padding:10px 12px;background:var(--bg3);border-top:1px solid var(--border)">
+      <div style="font-size:9px;color:var(--text3);margin-bottom:8px">⚠ Flagged fields = low confidence — verify before confirming</div>
+      <div id="rvHolder" style="margin-bottom:10px"></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn-next" onclick="confirmParse()">CONFIRM FIELDS →</button>
+        <button style="padding:10px 16px;background:none;border:1px solid var(--border);color:var(--text3);font-family:var(--mono);font-size:11px;cursor:pointer" onclick="rejectParse()">RE-UPLOAD</button>
+      </div>
+    </div>
+  </div>
+  <div class="step-nav">
+    <button class="btn-next" onclick="goStep(2)">Proceed to Route →</button>
+    <button class="btn-back" onclick="goStep(0)">← Back</button>
+  </div>
+</div>
+
+<!-- ═══ STEP 3 ═══ -->
+<div class="step-panel" id="sp-2">
+  <div class="step-head">
+    <div class="step-tag">Step 3 of 6</div>
+    <h2>Select Logistics Route</h2>
+    <p>GasRoute has found available capacity for your delivery window. The fee shown is GasRoute's logistics fee only — not the commodity.</p>
+  </div>
+  <div class="intent-box" id="s3intent"></div>
+  <div id="routeVizWrap" style="margin-bottom:14px"></div>
+  <div class="route-cards" id="routeCards"></div>
+  <div id="selectedRouteSummary" style="display:none;background:var(--bg2);border:1px solid var(--amber-dim);padding:12px 14px;margin-bottom:14px">
+    <div style="font-size:9px;color:var(--amber);text-transform:uppercase;letter-spacing:.08em;margin-bottom:8px">Selected Route</div>
+    <div id="srDetail"></div>
+  </div>
+  <div class="step-nav">
+    <button class="btn-next" onclick="goStep(3)">Proceed to Risk Review →</button>
+    <button class="btn-back" onclick="goStep(1)">← Back</button>
+  </div>
+</div>
+
+<!-- ═══ STEP 4 ═══ -->
+<div class="step-panel" id="sp-3">
+  <div class="step-head">
+    <div class="step-tag">Step 4 of 6</div>
+    <h2>Logistics Risk Review</h2>
+    <p>Review the risk factors specific to your route and delivery window. A single acknowledgement is required to proceed.</p>
+  </div>
+  <div id="riskItems"></div>
+  <div class="ack-box" onclick="toggleAck()">
+    <div class="ack-check" id="ackCheck"></div>
+    <div style="font-size:11px;color:var(--text2);line-height:1.6">
+      <strong style="color:var(--text)">I confirm I have reviewed all logistics terms and risk factors.</strong><br>
+      GasRoute's obligation is limited to physical logistics. Commodity price risk remains with me. I acknowledge the risks flagged above.
+    </div>
+  </div>
+  <div class="step-nav">
+    <button class="btn-next" id="next4" onclick="goStep(4)" disabled>Proceed to Quote Lock →</button>
+    <button class="btn-back" onclick="goStep(2)">← Back</button>
+  </div>
+</div>
+
+<!-- ═══ STEP 5 ═══ -->
+<div class="step-panel" id="sp-4">
+  <div class="step-head">
+    <div class="step-tag">Step 5 of 6</div>
+    <h2>Lock Your Logistics Quote</h2>
+    <p>Your quote reflects current capacity availability. The fee recalculates if capacity changes within the window — lock it now to secure this rate.</p>
+  </div>
+  <div class="timer-row">
+    <span style="font-size:10px;color:var(--text3)">Quote valid for</span>
+    <span class="timer-val" id="timerVal">5:00</span>
+    <div class="timer-track"><div class="timer-fill" id="timerBar" style="width:100%"></div></div>
+    <span style="font-size:10px;color:var(--text3);font-style:italic" id="timerNote">Recalculates if capacity changes</span>
+  </div>
+  <div class="quote-box">
+    <div style="font-size:9px;color:var(--amber);text-transform:uppercase;letter-spacing:.1em;margin-bottom:8px">GASROUTE LOGISTICS FEE — NOT THE COMMODITY PRICE</div>
+    <div class="q-price-row"><span class="q-price" id="qlPrice">₹—</span><span class="q-unit">₹/MMBtu &nbsp;·&nbsp; logistics fee only</span></div>
+    <div style="font-size:10px;color:var(--text3);font-style:italic;margin-bottom:14px">Your commodity price (from your contract) is separate and is not shown here.</div>
+    <div class="q-grid" id="qlGrid"></div>
+    <div style="background:var(--bg3);padding:8px 12px;font-size:10px;color:var(--text3);margin-top:12px;border-left:2px solid var(--amber-dim)">
+      Includes: pipeline tariff access, truck/ISO dispatch where applicable, capacity reservation, nomination management, and imbalance handling.
+    </div>
+  </div>
+  <div class="step-nav">
+    <button class="btn-next" onclick="lockAndProceed()">Lock Quote & Proceed →</button>
+    <button class="btn-back" onclick="goStep(3)">← Back</button>
+    <button class="btn-skip" onclick="refreshQuote()">↻ Refresh Quote</button>
+  </div>
+</div>
+
+<!-- ═══ STEP 6 ═══ -->
+<div class="step-panel" id="sp-5">
+  <div class="step-head">
+    <div class="step-tag">Step 6 of 6</div>
+    <h2>Review & Execute</h2>
+    <p>Final summary. Once executed GasRoute begins booking capacity and arranging physical logistics immediately.</p>
+  </div>
+  <div id="finalSummary" style="background:var(--bg2);border:1px solid var(--border);padding:16px;margin-bottom:16px"></div>
+  <div style="margin-bottom:16px">
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--amber);border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:10px">WHAT HAPPENS AFTER YOU EXECUTE</div>
+    <div id="whatNext"></div>
+  </div>
+  <div style="background:var(--amber-pale);border:1px solid var(--amber-dim);padding:10px 14px;margin-bottom:14px;font-size:10px;color:var(--text2)">
+    ⚠ By executing you authorise GasRoute to book pipeline capacity and arrange physical transport on your behalf. Logistics fee locked at <strong style="color:var(--amber)" id="finalFee">—</strong> ₹/MMBtu.
+  </div>
+  <button class="exec-btn" id="execBtn" onclick="executeOrder()">EXECUTE LOGISTICS ORDER</button>
+  <div id="successState" style="display:none;margin-top:20px">
+    <div class="confirm-hero">
+      <div style="font-size:30px;margin-bottom:8px">✓</div>
+      <div class="ch-ref" id="confRef">REF: —</div>
+      <div class="ch-title">ORDER EXECUTING</div>
+      <div class="ch-sub">GasRoute is booking capacity and arranging physical delivery</div>
+    </div>
+    <div style="font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--amber);border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:10px">LOGISTICS TIMELINE</div>
+    <div id="confTimeline"></div>
+    <div style="display:flex;gap:10px;margin-top:16px">
+      <button style="padding:9px 20px;background:none;border:1px solid var(--amber-dim);color:var(--amber);font-family:var(--mono);font-size:10px;cursor:pointer;letter-spacing:.06em" onclick="resetFlow()">+ NEW ORDER</button>
+      <button style="padding:9px 20px;background:var(--amber);color:var(--bg);font-family:var(--mono);font-size:11px;font-weight:600;border:none;cursor:pointer;letter-spacing:.06em">VIEW IN MY ORDERS →</button>
+    </div>
+  </div>
+  <div class="step-nav" id="s6nav">
+    <button class="btn-back" onclick="goStep(4)">← Back to Quote</button>
+  </div>
+</div>
+
+</div><!-- /flow-main -->
+
+<!-- SIDEBAR -->
+<div class="flow-side">
+  <div style="margin-bottom:14px">
+    <div class="sh">ORDER PROGRESS</div>
+    <div class="dr"><span class="dl">Step</span><span class="dv am" id="progStep">1 — Intent</span></div>
+    <div class="dr"><span class="dl">Role</span><span class="dv" id="progRole">—</span></div>
+    <div class="dr"><span class="dl">Pickup</span><span class="dv" id="progPickup">—</span></div>
+    <div class="dr"><span class="dl">Dropoff</span><span class="dv" id="progDropoff">—</span></div>
+    <div class="dr"><span class="dl">Volume</span><span class="dv" id="progVol">—</span></div>
+    <div class="dr"><span class="dl">Route selected</span><span class="dv" id="progRoute">—</span></div>
+    <div class="dr"><span class="dl">Logistics fee</span><span class="dv am" id="progFee">—</span></div>
+    <div class="dr"><span class="dl">Risk acknowledged</span><span class="dv" id="progAck">No</span></div>
+    <div class="dr"><span class="dl">Quote locked</span><span class="dv" id="progLocked">No</span></div>
+  </div>
+
+  <div style="margin-bottom:14px">
+    <div class="sh">QUICK JUMP</div>
+    <div style="display:flex;flex-direction:column;gap:4px">
+      ${[0,1,2,3,4,5].map(i=>`
+      <button onclick="goStep(${i})" id="qj-${i}" style="text-align:left;padding:6px 10px;background:var(--bg2);border:1px solid var(--border);color:var(--text3);font-family:var(--mono);font-size:10px;cursor:pointer;letter-spacing:.04em;transition:all .12s" onmouseover="this.style.borderColor='var(--amber-dim)';this.style.color='var(--text2)'" onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text3)'">
+        ${['1 — Intent','2 — Contract','3 — Route','4 — Risk Review','5 — Lock Quote','6 — Execute'][i]}
+      </button>`).join('')}
+    </div>
+  </div>
+
+  <div style="margin-bottom:14px">
+    <div class="sh">CAPACITY NOW</div>
+    <div class="dr"><span class="dl">GGCL Pipeline</span><span class="dv g">HIGH CAP · ₹18</span></div>
+    <div class="dr"><span class="dl">GAIL HVJ</span><span class="dv g">AVAIL · ₹22</span></div>
+    <div class="dr"><span class="dl">DUPL/UUPL</span><span class="dv am">MOD · ₹25</span></div>
+    <div class="dr"><span class="dl">SSLNG Truck</span><span class="dv g">14 slots · ₹32</span></div>
+    <div class="dr"><span class="dl">ISO Container</span><span class="dv am">4 slots · ₹41</span></div>
+  </div>
+
+  <div>
+    <div class="sh">OFO STATUS</div>
+    <div style="font-size:10px;color:var(--green2)">✓ No active OFO orders</div>
+    <div style="font-size:9px;color:var(--text4);margin-top:4px">Checked <span id="ofoTime">—</span></div>
+  </div>
+</div>
+
+</div>
+
+<script>
+function fmt(n){return Math.round(Number(n)).toLocaleString('en-US');}
+function fmtR(n){return '₹'+fmt(n);}
+setInterval(()=>{
+  const t=new Date().toTimeString().slice(0,8);
+  document.getElementById('clk').textContent=t;
+  document.getElementById('ofoTime').textContent=t;
+},1000);
+
+// ── STATE ──────────────────────────────────────────────
+const S={step:0,role:'buy',mode:'otc',pickup:'',dropoff:'',vol:0,from:'',to:'',parsed:null,route:null,ackDone:false,fee:0,ref:'',locked:false};
+const STEPS=['1 — Intent','2 — Contract','3 — Route','4 — Risk Review','5 — Lock Quote','6 — Execute'];
+const ROUTES=[
+  {id:'pipe',mode:'Pipeline',label:'Pipeline',fee:18,tag:'cheapest',tagLabel:'Lowest cost',avail:'ok',availLabel:'High capacity available',eta:'T+6h nomination · Next gas day',detail:'Firm capacity on GGCL mainline. Nomination by 13:00 for next gas day. Backup SSLNG truck pre-booked at no cost.',risk:'low'},
+  {id:'truck',mode:'SSLNG Truck',label:'SSLNG Truck',fee:34,tag:'fastest',tagLabel:'Fastest dispatch',avail:'ok',availLabel:'14 slots available',eta:'T+4h dispatch · 8h transit',detail:'3 cryogenic tankers from Hazira terminal. BOG shrinkage absorbed by GasRoute. No pipeline nomination required.',risk:'low'},
+  {id:'iso',mode:'ISO Container',label:'ISO Container',fee:41,tag:'secure',tagLabel:'Most flexible',avail:'low',availLabel:'4 units remaining',eta:'T+8h load · 24–72h transit',detail:'Intermodal ISO containers. Suitable for off-pipeline destinations. Full door-to-door service.',risk:'med'},
+];
+const RISKS=[
+  {title:'Commodity Price Risk',level:'low',body:'GasRoute has no visibility of your commodity price and takes no position. Your locked commodity price from your contract is entirely separate.'},
+  {title:'Pipeline Availability Risk',level:'low',body:'Current capacity confirmed available on your selected route. In the event of OFO or force majeure, GasRoute activates the backup truck route at no additional cost.'},
+  {title:'Take-or-Pay Obligation',level:'med',body:'Your underlying contract likely contains a T-o-P clause. If you under-nominate relative to your floor, any penalty is between you and your counterparty — GasRoute has no liability.'},
+  {title:'BOG Shrinkage (Liquefied Routes)',level:'low',body:'For SSLNG Truck or ISO Container routes, GasRoute absorbs boil-off shrinkage. You are billed for the nominated MMBtu, not the delivered volume.'},
+  {title:'Nomination Deadline Risk',level:'low',body:'Day-ahead nominations must be submitted by 13:00 IST. GasRoute manages all nominations on your behalf. Execution after 13:00 means delivery begins the day after tomorrow.'},
+  {title:'Monsoon / Seasonal Risk',level:'low',body:'Your delivery falls outside the monsoon window. No seasonal throughput restrictions currently forecast. GasRoute monitors continuously and will notify you of any change.'},
+];
+
+// ── CORE NAVIGATION ────────────────────────────────────
+// ALL STEPS ALWAYS CLICKABLE — unrestricted navigation
+function goStep(n){
+  S.step=n;
+  document.querySelectorAll('.step-panel').forEach((p,i)=>p.classList.toggle('active',i===n));
+  document.querySelectorAll('.step-item').forEach((si,i)=>{
+    si.classList.remove('active','visited');
+    if(i===n) si.classList.add('active');
+    else if(i<n) si.classList.add('visited');
+  });
+  document.getElementById('progStep').textContent=STEPS[n];
+  // Update quick-jump highlight
+  document.querySelectorAll('[id^="qj-"]').forEach((b,i)=>{
+    b.style.background=i===n?'var(--amber-pale)':'var(--bg2)';
+    b.style.borderColor=i===n?'var(--amber-dim)':'var(--border)';
+    b.style.color=i===n?'var(--amber)':'var(--text3)';
+  });
+  if(n===1) buildS2();
+  if(n===2) buildS3();
+  if(n===3) buildS4();
+  if(n===4) buildS5();
+  if(n===5) buildS6();
+  window.scrollTo(0,0);
+}
+
+// Keyboard shortcuts: Ctrl/Cmd + 1–6
+document.addEventListener('keydown',e=>{
+  if((e.metaKey||e.ctrlKey)&&e.key>='1'&&e.key<='6'){
+    e.preventDefault();
+    goStep(parseInt(e.key)-1);
+  }
+});
+
+// ── STEP 1 ─────────────────────────────────────────────
+function setRole(r){S.role=r;document.getElementById('rBuy').classList.toggle('active',r==='buy');document.getElementById('rSell').classList.toggle('active',r==='sell');updateSidebar();}
+function setMode(m){S.mode=m;document.getElementById('mOTC').classList.toggle('active',m==='otc');document.getElementById('mIGX').classList.toggle('active',m==='igx');document.getElementById('modeNote').textContent=m==='otc'?'OTC — you have a signed bilateral agreement. GasRoute arranges the physical logistics layer only.':'IGX — your trade was matched on the Indian Gas Exchange. GasRoute arranges physical delivery.';updateSidebar();}
+function updateIntent(){
+  S.pickup=document.getElementById('i_pickup').value;
+  S.dropoff=document.getElementById('i_dropoff').value;
+  S.vol=parseFloat(document.getElementById('i_vol').value)||0;
+  S.from=document.getElementById('i_from').value;
+  S.to=document.getElementById('i_to').value;
+  const ready=S.pickup&&S.dropoff&&S.vol>0&&S.from&&S.to;
+  const sb=document.getElementById('intentSummary');
+  if(ready){
+    sb.style.display='block';
+    document.getElementById('is_role').textContent=S.role==='buy'?'Buyer':'Seller';
+    document.getElementById('is_route').textContent=S.pickup.split(',')[0]+' → '+S.dropoff;
+    document.getElementById('is_vol').textContent=fmt(S.vol)+' MMBtu';
+    document.getElementById('is_period').textContent=S.from+' → '+S.to;
+  } else sb.style.display='none';
+  updateSidebar();
+}
+function updateSidebar(){
+  document.getElementById('progRole').textContent=S.role==='buy'?'Buyer':'Seller';
+  document.getElementById('progPickup').textContent=S.pickup?S.pickup.split(',')[0]:'—';
+  document.getElementById('progDropoff').textContent=S.dropoff||'—';
+  document.getElementById('progVol').textContent=S.vol?fmt(S.vol)+' MMBtu':'—';
+  document.getElementById('progRoute').textContent=S.route?S.route.mode:'—';
+  document.getElementById('progFee').textContent=S.fee?fmtR(S.fee)+'/MMBtu':'—';
+  document.getElementById('progAck').textContent=S.ackDone?'✓ Yes':'No';
+  document.getElementById('progLocked').textContent=S.locked?'✓ Yes':'No';
+}
+(()=>{const t=new Date();t.setDate(t.getDate()+1);const e=new Date(t);e.setDate(e.getDate()+30);document.getElementById('i_from').value=t.toISOString().slice(0,10);document.getElementById('i_to').value=e.toISOString().slice(0,10);})();
+
+// ── STEP 2 ─────────────────────────────────────────────
+function buildS2(){
+  document.getElementById('s2intent').innerHTML=`
+    <div style="font-size:9px;color:var(--amber);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Your Intent Record</div>
+    <div class="ib-row"><span class="ib-k">Route</span><span class="ib-v am">${(S.pickup||'—').split(',')[0]} → ${S.dropoff||'—'}</span></div>
+    <div class="ib-row"><span class="ib-k">Volume</span><span class="ib-v">${fmt(S.vol||62000)} MMBtu</span></div>
+    <div class="ib-row"><span class="ib-k">Period</span><span class="ib-v">${S.from||'—'} → ${S.to||'—'}</span></div>`;
+}
+function hFile(f){if(f)document.getElementById('uzT').textContent='📄 '+f.name+' — ready';}
+function hDrop(e){e.preventDefault();if(e.dataTransfer.files[0])hFile(e.dataTransfer.files[0]);}
+const FB={seller:'Shell Energy India Pvt. Ltd.',buyer:'Arvind Textiles Ltd.',pickup:'Hazira LNG Terminal, Gujarat',dropoff:'Naroda Industrial Estate, Ahmedabad',volume:'62,000 MMBtu',period:'01 Apr 2026 – 30 Apr 2026',contract_ref:'GSA-2026-SHELL-ARVIND-07'};
+async function analyse(){
+  const txt=document.getElementById('cText').value.trim();
+  document.getElementById('ldRow').style.display='block';
+  document.getElementById('ppanel').style.display='none';
+  let p={...FB,pickup:S.pickup||FB.pickup,dropoff:S.dropoff||FB.dropoff,volume:fmt(S.vol||62000)+' MMBtu'};
+  if(txt.length>30){
+    try{
+      const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:500,messages:[{role:'user',content:`Extract LOGISTICS parameters only from this gas contract. Return ONLY JSON: seller, buyer, pickup, dropoff, volume, period, contract_ref. Do NOT extract commodity price. Prefix uncertain values with "~". No other text.\n\n${txt}`}]})});
+      const d=await r.json();
+      p=JSON.parse(d.content[0].text.replace(/```json|```/g,'').trim());
+    }catch(e){}
+  }
+  document.getElementById('ldRow').style.display='none';
+  S.parsed=p;
+  renderPP(p);
+}
+function renderPP(p){
+  const fields=[['Seller',p.seller,false],['Buyer',p.buyer,false],['Pickup',p.pickup,(p.pickup||'').startsWith('~')],['Drop-off',p.dropoff,(p.dropoff||'').startsWith('~')],['Volume',p.volume,false],['Period',p.period,(p.period||'').startsWith('~')],['Contract Ref',p.contract_ref,false]];
+  document.getElementById('ppFields').innerHTML=fields.map(([l,v,u])=>`<div class="pf${u?' unc':''}"><div class="pfl">${l}</div><div class="pfv"><input value="${(v||'').replace(/^~/,'')}" data-k="${l}"></div></div>`).join('');
+  const src=(p.pickup||'Source').replace(/^~/,'').split(',')[0];
+  const dst=(p.dropoff||'Destination').replace(/^~/,'').split(',')[0];
+  document.getElementById('rvHolder').innerHTML=`<div style="display:flex;align-items:center;margin:8px 0;font-size:11px"><div style="text-align:center;flex-shrink:0"><div style="width:9px;height:9px;border-radius:50%;background:var(--amber);margin:0 auto 3px"></div><div style="font-size:9px;color:var(--text3)">PICKUP</div><div style="color:var(--text);font-weight:500">${src}</div></div><div style="flex:1;border-top:1px dashed var(--text4);margin:0 10px;margin-bottom:14px;position:relative"><span style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--amber);white-space:nowrap;background:var(--bg2);padding:0 4px">Logistics only</span></div><div style="text-align:center;flex-shrink:0"><div style="width:9px;height:9px;border-radius:50%;background:var(--cyan);margin:0 auto 3px"></div><div style="font-size:9px;color:var(--text3)">DROPOFF</div><div style="color:var(--text);font-weight:500">${dst}</div></div></div>`;
+  document.getElementById('ppanel').style.display='block';
+}
+function confirmParse(){document.querySelectorAll('#ppFields .pfv input').forEach(i=>{if(S.parsed)S.parsed[i.dataset.k]=i.value;});document.getElementById('ppanel').style.display='none';goStep(2);}
+function rejectParse(){document.getElementById('ppanel').style.display='none';document.getElementById('cText').value='';}
+
+// ── STEP 3 ─────────────────────────────────────────────
+function buildS3(){
+  const src=(S.parsed?.pickup||S.pickup||'Source').split(',')[0];
+  const dst=(S.parsed?.dropoff||S.dropoff||'Destination').split(',')[0];
+  document.getElementById('s3intent').innerHTML=`
+    <div style="font-size:9px;color:var(--amber);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px">Routing for</div>
+    <div class="ib-row"><span class="ib-k">Route</span><span class="ib-v am">${src} → ${dst}</span></div>
+    <div class="ib-row"><span class="ib-k">Volume</span><span class="ib-v">${fmt(S.vol||62000)} MMBtu &nbsp;·&nbsp; ${S.from||'—'} → ${S.to||'—'}</span></div>`;
+  document.getElementById('routeVizWrap').innerHTML=`<div style="display:flex;align-items:center;margin:8px 0 14px;font-size:11px"><div style="text-align:center;flex-shrink:0"><div style="width:10px;height:10px;border-radius:50%;background:var(--amber);margin:0 auto 3px"></div><div style="font-size:9px;color:var(--text3)">SOURCE</div><div style="color:var(--text);font-weight:500">${src}</div></div><div style="flex:1;border-top:1px dashed var(--text4);margin:0 10px;margin-bottom:16px;position:relative"><span id="routeVizLabel" style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--amber);white-space:nowrap;background:var(--bg);padding:0 4px">Select route below</span></div><div style="text-align:center;flex-shrink:0"><div style="width:10px;height:10px;border-radius:50%;background:var(--cyan);margin:0 auto 3px"></div><div style="font-size:9px;color:var(--text3)">DESTINATION</div><div style="color:var(--text);font-weight:500">${dst}</div></div></div>`;
+  document.getElementById('routeCards').innerHTML=ROUTES.map(r=>`
+    <div class="rc ${S.route?.id===r.id?'selected':''}" onclick="selectRoute('${r.id}')">
+      <div class="rc-mode">${r.mode}</div>
+      <div class="rc-fee">${fmtR(r.fee)}</div>
+      <div class="rc-unit">₹/MMBtu &nbsp;·&nbsp; logistics fee only</div>
+      <div><span class="rc-tag ${r.tag}">${r.tagLabel}</span></div>
+      <div class="rc-detail">${r.detail}</div>
+      <div class="rc-avail ${r.avail}">● ${r.availLabel}</div>
+    </div>`).join('');
+  if(S.route) updateSelectedRoute(S.route);
+}
+function selectRoute(id){
+  S.route=ROUTES.find(r=>r.id===id);
+  S.fee=S.route.fee;
+  document.querySelectorAll('.rc').forEach(c=>c.classList.remove('selected'));
+  event.currentTarget.classList.add('selected');
+  const lbl=document.getElementById('routeVizLabel');
+  if(lbl) lbl.textContent=S.route.mode;
+  updateSelectedRoute(S.route);
+  updateSidebar();
+}
+function updateSelectedRoute(r){
+  const wrap=document.getElementById('selectedRouteSummary');
+  document.getElementById('srDetail').innerHTML=`
+    <div class="ib-row"><span class="ib-k">Mode</span><span class="ib-v am">${r.mode}</span></div>
+    <div class="ib-row"><span class="ib-k">Logistics fee</span><span class="ib-v am">${fmtR(r.fee)}/MMBtu</span></div>
+    <div class="ib-row"><span class="ib-k">Total logistics cost</span><span class="ib-v am">${fmtR(r.fee*(S.vol||62000))}</span></div>
+    <div class="ib-row"><span class="ib-k">ETA</span><span class="ib-v">${r.eta}</span></div>`;
+  wrap.style.display='block';
+}
+
+// ── STEP 4 ─────────────────────────────────────────────
+function buildS4(){
+  document.getElementById('riskItems').innerHTML=RISKS.map(ri=>`
+    <div class="risk-card ${ri.level}">
+      <div class="rc-head"><span class="rc-name">${ri.title}</span><span class="rc-lvl ${ri.level}">${ri.level.toUpperCase()}</span></div>
+      <div class="rc-body">${ri.body}</div>
+    </div>`).join('');
+  // Restore ack state
+  document.getElementById('ackCheck').classList.toggle('checked',S.ackDone);
+  document.getElementById('next4').disabled=!S.ackDone;
+}
+function toggleAck(){
+  S.ackDone=!S.ackDone;
+  document.getElementById('ackCheck').classList.toggle('checked',S.ackDone);
+  document.getElementById('next4').disabled=!S.ackDone;
+  updateSidebar();
+}
+
+// ── STEP 5 ─────────────────────────────────────────────
+let timerInterval=null,timerSecs=300;
+function buildS5(){
+  if(!S.fee&&S.route) S.fee=S.route.fee;
+  renderQuote();
+  startTimer();
+}
+function renderQuote(){
+  const vol=S.vol||62000;const fee=S.fee||18;
+  document.getElementById('qlPrice').textContent=fmtR(fee);
+  document.getElementById('qlGrid').innerHTML=`
+    <span class="ql">Mode</span><span class="qv">${S.route?.mode||'Pipeline'}</span>
+    <span class="ql">Volume</span><span class="qv">${fmt(vol)} MMBtu</span>
+    <span class="ql">Total logistics cost</span><span class="qv am">${fmtR(fee*vol)}</span>
+    <span class="ql">Route</span><span class="qv">${(S.parsed?.pickup||S.pickup||'—').split(',')[0]} → ${(S.parsed?.dropoff||S.dropoff||'—').split(',')[0]}</span>
+    <span class="ql">Delivery period</span><span class="qv">${S.from||'—'} → ${S.to||'—'}</span>
+    <span class="qdiv"></span>
+    <span class="ql">Ref</span><span class="qv" style="color:var(--text3)">GR-QUOTE-${Date.now().toString().slice(-6)}</span>`;
+  document.getElementById('finalFee').textContent=fmtR(fee);
+  updateSidebar();
+}
+function startTimer(){
+  if(timerInterval) clearInterval(timerInterval);
+  timerSecs=300;
+  tickTimer();
+  timerInterval=setInterval(()=>{timerSecs--;if(timerSecs<=0){clearInterval(timerInterval);refreshQuote();}else tickTimer();},1000);
+}
+function tickTimer(){
+  const m=Math.floor(timerSecs/60),s=timerSecs%60;
+  const tv=document.getElementById('timerVal');const tb=document.getElementById('timerBar');const tn=document.getElementById('timerNote');
+  if(tv){tv.textContent=m+':'+(s<10?'0':'')+s;tv.className='timer-val'+(timerSecs<60?' urgent':'');}
+  if(tb){tb.style.width=(timerSecs/300*100)+'%';tb.className='timer-fill'+(timerSecs<60?' urgent':'');}
+  if(tn&&timerSecs<60) tn.textContent='Recalculating soon — lock now';
+}
+function refreshQuote(){
+  clearInterval(timerInterval);
+  if(S.route) S.fee=S.route.fee+Math.round((Math.random()-.4)*3);
+  renderQuote();startTimer();
+}
+function lockAndProceed(){
+  clearInterval(timerInterval);
+  S.locked=true;S.ref='GR-'+Date.now().toString().slice(-6);
+  updateSidebar();goStep(5);
+}
+
+// ── STEP 6 ─────────────────────────────────────────────
+function buildS6(){
+  const vol=S.vol||62000;const fee=S.fee||18;
+  document.getElementById('finalSummary').innerHTML=`
+    <div style="font-size:9px;color:var(--amber);text-transform:uppercase;letter-spacing:.08em;margin-bottom:12px">Final Order Summary</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:14px">
+      <div style="background:var(--bg3);padding:10px;text-align:center"><div style="font-size:22px;font-weight:600;color:var(--amber3)">${fmtR(fee)}</div><div style="font-size:9px;color:var(--text3);margin-top:3px;text-transform:uppercase;letter-spacing:.05em">₹/MMBtu Logistics Fee</div></div>
+      <div style="background:var(--bg3);padding:10px;text-align:center"><div style="font-size:22px;font-weight:600;color:var(--cyan)">${fmt(vol)}</div><div style="font-size:9px;color:var(--text3);margin-top:3px;text-transform:uppercase;letter-spacing:.05em">MMBtu Volume</div></div>
+      <div style="background:var(--bg3);padding:10px;text-align:center"><div style="font-size:22px;font-weight:600;color:var(--amber3)">${fmtR(fee*vol)}</div><div style="font-size:9px;color:var(--text3);margin-top:3px;text-transform:uppercase;letter-spacing:.05em">Total Logistics Cost</div></div>
+    </div>
+    <div class="ib-row"><span class="ib-k">Route</span><span class="ib-v am">${(S.parsed?.pickup||S.pickup||'—').split(',')[0]} → ${(S.parsed?.dropoff||S.dropoff||'—').split(',')[0]}</span></div>
+    <div class="ib-row"><span class="ib-k">Mode</span><span class="ib-v">${S.route?.mode||'Pipeline'}</span></div>
+    <div class="ib-row"><span class="ib-k">Period</span><span class="ib-v">${S.from||'—'} → ${S.to||'—'}</span></div>
+    <div class="ib-row"><span class="ib-k">Contract ref</span><span class="ib-v">${S.parsed?.contract_ref||'—'}</span></div>
+    <div class="ib-row"><span class="ib-k">GasRoute ref</span><span class="ib-v am">${S.ref||'(locked on execution)'}</span></div>`;
+  document.getElementById('whatNext').innerHTML=`
+    <div class="tl-row"><div class="tl-time">Now</div><div><div class="tl-event">Order received</div><div class="tl-detail">Capacity hold placed on ${S.route?.mode||'pipeline'}</div></div></div>
+    <div class="tl-row"><div class="tl-time">Within 2 hours</div><div><div class="tl-event">Capacity formally booked</div><div class="tl-detail">Confirmation sent to you by GasRoute</div></div></div>
+    <div class="tl-row"><div class="tl-time">By 13:00 today</div><div><div class="tl-event">Day-ahead nomination submitted</div><div class="tl-detail">GasRoute nominates on your behalf</div></div></div>
+    <div class="tl-row"><div class="tl-time">${S.from||'Delivery date'} 06:00</div><div><div class="tl-event">First delivery commences</div><div class="tl-detail">Delivery meter goes live in My Orders</div></div></div>
+    <div class="tl-row"><div class="tl-time">Daily</div><div><div class="tl-event">All nominations managed by GasRoute</div><div class="tl-detail">Imbalance monitoring active throughout</div></div></div>`;
+}
+function executeOrder(){
+  document.getElementById('execBtn').style.display='none';
+  document.getElementById('s6nav').style.display='none';
+  document.getElementById('successState').style.display='block';
+  document.getElementById('confRef').textContent='REF: '+(S.ref||'GR-'+Date.now().toString().slice(-6));
+  const fee=S.fee||18;const vol=S.vol||62000;
+  document.getElementById('confTimeline').innerHTML=`
+    <div class="tl-row"><div class="tl-time" style="color:var(--green2)">✓ Now</div><div><div class="tl-event" style="color:var(--green2)">Order confirmed — ${S.ref}</div><div class="tl-detail">${fmtR(fee)}/MMBtu logistics fee · ${fmt(vol)} MMBtu · ${S.route?.mode||'Pipeline'}</div></div></div>
+    <div class="tl-row"><div class="tl-time">~2 hours</div><div><div class="tl-event">Capacity booking confirmation</div><div class="tl-detail">Email + in-app notification</div></div></div>
+    <div class="tl-row"><div class="tl-time">13:00 today</div><div><div class="tl-event">Day-ahead nomination submitted</div><div class="tl-detail">GasRoute acts as shipper on your behalf</div></div></div>
+    <div class="tl-row"><div class="tl-time">${S.from||'Delivery date'}</div><div><div class="tl-event">Physical delivery begins</div><div class="tl-detail">Track in My Orders → Delivery Meter</div></div></div>`;
+  S.locked=true;updateSidebar();
+}
+function resetFlow(){
+  Object.assign(S,{step:0,role:'buy',mode:'otc',pickup:'',dropoff:'',vol:0,from:'',to:'',parsed:null,route:null,ackDone:false,fee:0,ref:'',locked:false});
+  document.getElementById('execBtn').style.display='block';
+  document.getElementById('s6nav').style.display='flex';
+  document.getElementById('successState').style.display='none';
+  goStep(0);updateSidebar();
+}
+</script>
+</body>
+</html>

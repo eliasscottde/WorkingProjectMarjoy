@@ -1,0 +1,741 @@
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080806;--bg1:#0f0e0c;--bg2:#161513;--bg3:#1e1c19;--bg4:#272420;--bg5:#302d28;
+  --amber:#e8980a;--amber2:#f5aa18;--amber3:#ffc040;--amber-dim:#6b4408;--amber-pale:#1a0e02;
+  --green:#3d9e52;--green2:#50c468;--green-dim:#0d2814;
+  --red:#c43838;--red2:#e04848;--red-dim:#2e0c0c;
+  --cyan:#1ab8cc;--cyan-dim:#062830;
+  --blue:#2878d4;--blue-dim:#081830;
+  --text:#e8dcc8;--text2:#a89880;--text3:#706050;--text4:#483e34;
+  --border:rgba(255,255,255,0.07);
+  --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;
+}
+html,body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:11px;line-height:1.4;min-height:100vh;overflow-x:hidden}
+
+/* ── TOPBAR ── */
+.top{height:34px;background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 14px;position:sticky;top:0;z-index:200;gap:12px}
+.logo{font-size:13px;font-weight:600;color:var(--amber);letter-spacing:.1em;flex-shrink:0}
+.logo span{color:var(--text3);font-weight:300}
+.ticker-strip{flex:1;display:flex;gap:18px;overflow:hidden;align-items:center}
+.tick{display:flex;gap:6px;align-items:baseline;white-space:nowrap;font-size:10px}
+.t-hub{color:var(--text3)}.t-p{color:var(--amber);font-weight:500}.t-c.up{color:var(--green2)}.t-c.dn{color:var(--red2)}
+.top-right{display:flex;align-items:center;gap:14px;font-size:10px;color:var(--text3);flex-shrink:0}
+.pip{width:5px;height:5px;border-radius:50%;background:var(--green2);display:inline-block;margin-right:4px;animation:pip 2s infinite}
+@keyframes pip{0%,100%{opacity:1}50%{opacity:.2}}
+
+/* ── NAV ── */
+.nav{display:flex;background:var(--bg1);border-bottom:1px solid var(--border);padding:0 14px}
+.ntab{padding:8px 14px;font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;letter-spacing:.06em;text-transform:uppercase;font-family:var(--mono);transition:color .12s}
+.ntab.active{color:var(--amber);border-bottom-color:var(--amber)}
+.ntab:hover:not(.active){color:var(--text2)}
+.nbadge{background:var(--amber-dim);color:var(--amber);font-size:9px;padding:0 5px;margin-left:4px}
+
+/* ── SHELL ── */
+.shell{display:none}.shell.active{display:block}
+.layout{display:grid;grid-template-columns:1fr 298px;min-height:calc(100vh - 66px)}
+.main{padding:14px;border-right:1px solid var(--border);overflow-y:auto}
+.side{background:var(--bg1);overflow-y:auto;display:flex;flex-direction:column}
+
+/* ── SECTION HEADERS ── */
+.sh{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--amber);border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:baseline}
+.sh span{color:var(--text4);font-size:9px;text-transform:none;letter-spacing:.02em}
+
+/* ── TOGGLES ── */
+.toggle-row{display:flex;gap:0;margin-bottom:12px}
+.tbtn{padding:5px 16px;font-size:10px;font-family:var(--mono);background:var(--bg3);border:1px solid var(--border);color:var(--text3);cursor:pointer;letter-spacing:.06em;transition:all .12s}
+.tbtn.active{background:var(--amber);color:var(--bg);border-color:var(--amber)}
+.tbtn:not(.active):hover{color:var(--text2);background:var(--bg4)}
+
+/* ── FORM ── */
+.flabel{font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);display:block;margin-bottom:3px}
+.fc{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:6px 8px;outline:none;-webkit-appearance:none;appearance:none;transition:border-color .15s}
+.fc:focus{border-color:var(--amber-dim)}
+.fc option{background:var(--bg2)}
+.fg{margin-bottom:10px}
+.fr2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.fr3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+
+/* ── UPLOAD ── */
+.upload-z{border:1px dashed var(--bg5);padding:20px 16px;text-align:center;cursor:pointer;background:var(--bg2);transition:all .15s;margin-bottom:10px;position:relative}
+.upload-z:hover,.upload-z.drag{border-color:var(--amber-dim);background:var(--amber-pale)}
+.upload-z input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.uz-t{font-size:12px;font-weight:500;color:var(--text2);margin-bottom:2px}
+.uz-s{font-size:10px;color:var(--text3)}
+.uz-s strong{color:var(--amber)}
+
+/* ── PARSE PANEL ── */
+.parse-panel{display:none;border:1px solid var(--amber-dim);background:var(--bg2);margin-bottom:12px}
+.pp-head{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--amber-pale);border-bottom:1px solid var(--amber-dim)}
+.pp-head h4{font-size:11px;font-weight:500;color:var(--amber2)}
+.pp-tag{font-size:9px;padding:1px 6px;background:var(--amber-dim);color:var(--amber);letter-spacing:.06em}
+.pp-grid{display:grid;grid-template-columns:1fr 1fr;padding:10px 12px;gap:0}
+.pf{padding:6px 0;border-bottom:1px solid var(--border)}
+.pfl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+.pfv input{background:none;border:none;border-bottom:1px solid var(--bg5);color:var(--text);font-family:var(--mono);font-size:11px;outline:none;width:100%;padding:1px 0}
+.pfv input:focus{border-bottom-color:var(--amber)}
+.pf.unc .pfl::after{content:' ⚠';color:var(--amber)}
+.pf.unc .pfv input{border-bottom-color:var(--amber-dim)}
+.pp-actions{display:flex;gap:8px;padding:10px 12px;background:var(--bg3);border-top:1px solid var(--border)}
+.btn-ok{flex:1;padding:8px;background:var(--amber);color:var(--bg);font-family:var(--mono);font-size:11px;font-weight:600;border:none;cursor:pointer;letter-spacing:.06em}
+.btn-ok:hover{background:var(--amber2)}
+.btn-no{padding:8px 14px;background:none;border:1px solid var(--border);color:var(--text3);font-family:var(--mono);font-size:10px;cursor:pointer}
+.btn-no:hover{color:var(--text2)}
+
+/* ── LOADING ── */
+.loading-row{display:none;padding:12px;background:var(--bg2);border:1px solid var(--border);margin-bottom:12px;font-size:11px;color:var(--text3);font-style:italic;text-align:center}
+.spin{display:inline-block;width:11px;height:11px;border:2px solid var(--bg5);border-top-color:var(--amber);border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* ── ROUTE VIZ ── */
+.rv{display:flex;align-items:center;margin:8px 0}
+.rv-nd{text-align:center;flex-shrink:0}
+.rv-dot{width:9px;height:9px;border-radius:50%;margin:0 auto 3px}
+.rv-dot.s{background:var(--amber)}.rv-dot.d{background:var(--cyan)}
+.rv-lbl{font-size:9px;color:var(--text3);text-transform:uppercase}
+.rv-nm{font-size:10px;color:var(--text);font-weight:500;margin-top:1px}
+.rv-line{flex:1;border-top:1px dashed var(--text4);margin:0 8px;margin-bottom:14px;position:relative}
+.rv-tag{position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--amber);white-space:nowrap;background:var(--bg2);padding:0 3px}
+
+/* ── QUOTE ── */
+.qbox{display:none;border:1px solid var(--border);border-left:3px solid var(--amber);background:var(--bg2);padding:14px;margin-bottom:12px}
+.q-big{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+.q-price{font-size:34px;font-weight:600;color:var(--amber3);letter-spacing:-.02em;font-family:var(--mono)}
+.q-unit{font-size:11px;color:var(--text3)}
+.q-context{font-size:10px;color:var(--text3);margin-bottom:10px;font-style:italic}
+.q-grid{display:grid;grid-template-columns:1fr auto;gap:4px 16px;font-size:11px}
+.ql{color:var(--text3)}.qv{color:var(--text2);text-align:right;font-variant-numeric:tabular-nums}
+.qv.hl{color:var(--amber2);font-size:13px;font-weight:500}
+.q-div{grid-column:1/-1;border-top:1px solid var(--border);margin:3px 0}
+.q-savings{background:var(--green-dim);border:1px solid var(--green-dim);padding:6px 10px;margin-top:10px;display:flex;justify-content:space-between;font-size:11px}
+.q-sav-lbl{color:var(--text3)}.q-sav-val{color:var(--green2);font-weight:500}
+
+/* ── EXEC BTN ── */
+.exec{width:100%;padding:11px;background:var(--amber);color:var(--bg);font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;border:none;cursor:pointer;display:none;transition:background .12s}
+.exec:hover{background:var(--amber2)}
+
+/* ── SUCCESS ── */
+.succ{display:none;background:var(--amber-pale);border:1px solid var(--amber-dim);padding:12px 14px;margin-bottom:12px}
+.succ-t{font-size:12px;color:var(--amber2);font-weight:500;margin-bottom:2px}
+.succ-r{font-size:10px;color:var(--text3)}
+
+/* ── SIDEBAR PANELS ── */
+.sp{padding:10px 12px;border-bottom:1px solid var(--border)}
+
+/* big price display */
+.bprice{font-size:26px;font-weight:600;color:var(--amber3);letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.bprice-sub{font-size:10px;color:var(--text3);margin-top:1px}
+
+/* data rows */
+.dr{display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+.dr:last-child{border-bottom:none}
+.dl{font-size:10px;color:var(--text3)}.dv{font-size:10px;color:var(--text2);font-variant-numeric:tabular-nums}
+.dv.am{color:var(--amber)}.dv.g{color:var(--green2)}.dv.r{color:var(--red2)}.dv.c{color:var(--cyan)}
+
+/* Transport tree */
+.tree-section{margin-bottom:2px}
+.tree-cat{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--amber);padding:4px 0 3px;display:flex;justify-content:space-between}
+.tree-cat span{color:var(--text3);text-transform:none;letter-spacing:.02em}
+.tree-item{display:flex;justify-content:space-between;align-items:baseline;padding:2px 0 2px 10px;border-left:1px solid var(--bg5)}
+.ti-name{font-size:10px;color:var(--text2)}.ti-slots{font-size:10px;font-variant-numeric:tabular-nums}
+.ti-slots.ok{color:var(--green2)}.ti-slots.low{color:var(--amber)}.ti-slots.none{color:var(--red2)}
+.ti-price{font-size:10px;color:var(--amber);margin-left:6px;font-variant-numeric:tabular-nums}
+.ti-bar{height:2px;background:var(--bg5);margin:2px 0 2px 10px;position:relative}
+.ti-fill{height:100%;background:var(--green);transition:width .4s}
+.ti-fill.warn{background:var(--amber)}.ti-fill.crit{background:var(--red)}
+
+/* IGX depth mini */
+.depth-mini{display:grid;grid-template-columns:auto 1fr auto;gap:0 6px;font-size:10px}
+.dm-price.ask{color:var(--red2)}.dm-price.bid{color:var(--green2)}
+.dm-vol{color:var(--text4);font-size:9px;align-self:center}
+.dm-bar-t{height:8px;display:flex;align-items:center}
+.dm-bar-fill{height:4px;background:var(--green-dim)}
+.dm-bar-fill.ask{background:var(--red-dim)}
+.dm-spread-line{grid-column:1/-1;display:flex;align-items:center;gap:6px;padding:2px 0;font-size:9px;color:var(--text4)}
+.dm-spread-line::before,.dm-spread-line::after{content:'';flex:1;border-top:1px solid var(--bg5)}
+
+/* Alert strip */
+.alert{background:var(--amber-pale);border-left:2px solid var(--amber);padding:4px 8px;margin-bottom:4px;font-size:10px}
+.alert-t{color:var(--amber);font-weight:500}.alert-s{color:var(--text3);margin-top:1px}
+
+/* Position summary big numbers */
+.pos-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:2px 0}
+.pos-cell{text-align:center;padding:6px;background:var(--bg3)}
+.pc-val{font-size:18px;font-weight:600;font-variant-numeric:tabular-nums}
+.pc-lbl{font-size:9px;color:var(--text3);margin-top:2px;text-transform:uppercase;letter-spacing:.05em}
+
+/* Missed trade feed */
+.mf-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:10px}
+.mf-hub{color:var(--text2);font-weight:500}.mf-vol{color:var(--text3)}.mf-spread{color:var(--amber)}
+
+/* Order tracker */
+.oc{background:var(--bg2);border:1px solid var(--border);margin-bottom:10px;position:relative;cursor:pointer}
+.oc::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
+.oc.pip::before{background:var(--green)}.oc.trk::before{background:var(--amber)}.oc.pen::before{background:var(--text4)}
+.oc-h{padding:10px 12px;display:flex;justify-content:space-between;align-items:flex-start}
+.oc-ref{font-size:12px;font-weight:500;color:var(--text)}.oc-sub{font-size:10px;color:var(--text3);margin-top:1px}
+.oc-badge{font-size:9px;padding:2px 6px;letter-spacing:.05em}
+.oc-badge.flowing{background:var(--green-dim);color:var(--green2)}
+.oc-badge.transit{background:var(--amber-pale);color:var(--amber)}
+.oc-badge.pending{background:var(--bg4);color:var(--text3);border:1px solid var(--bg5)}
+.oc-kpis{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--border)}
+.kp{padding:7px 10px;border-right:1px solid var(--border);text-align:center}
+.kp:last-child{border-right:none}
+.kp-v{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.kp-v.g{color:var(--green2)}.kp-v.a{color:var(--amber)}.kp-v.w{color:var(--red2)}
+.kp-l{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
+.oc-body{display:none;padding:10px 12px;border-top:1px solid var(--border)}
+.prog{height:3px;background:var(--bg5);margin:6px 0 3px}
+.prog-f{height:100%;background:var(--amber)}.prog-f.pipe{background:var(--green)}
+.prog-lbl{display:flex;justify-content:space-between;font-size:9px;color:var(--text4)}
+.dg{display:grid;grid-template-columns:1fr 1fr;gap:0;margin-top:8px}
+.dg-r{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:10px}
+.dg-r span:first-child{color:var(--text3)}.dg-r span:last-child{color:var(--text2);font-weight:500}
+
+/* IGX tab table */
+.igt{width:100%;border-collapse:collapse;font-size:11px}
+.igt th{text-align:left;padding:5px 10px;border-bottom:1px solid var(--border);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:400}
+.igt td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text2);font-variant-numeric:tabular-nums}
+.igt tr:hover td{background:var(--bg3)}
+</style>
+
+<!-- TOPBAR -->
+<div class="top">
+  <div class="logo">GASROUTE <span>// TERMINAL</span></div>
+  <div class="ticker-strip" id="tickers"></div>
+  <div class="top-right">
+    <span><span class="pip"></span>IGX LIVE</span>
+    <span id="clk">--:--:--</span>
+    <span style="color:var(--text2)">ARVIND-TX</span>
+  </div>
+</div>
+
+<!-- NAV -->
+<div class="nav">
+  <button class="ntab active" onclick="st('new',this)">NEW ORDER</button>
+  <button class="ntab" onclick="st('track',this)">MY ORDERS<span class="nbadge">3</span></button>
+  <button class="ntab" onclick="st('igx',this)">IGX MARKET</button>
+</div>
+
+<!-- ══ NEW ORDER ══ -->
+<div class="shell active" id="tab-new">
+<div class="layout">
+<div class="main">
+
+  <!-- mode/role -->
+  <div class="fr2" style="margin-bottom:12px">
+    <div>
+      <div class="flabel">Transaction Mode</div>
+      <div class="toggle-row">
+        <button class="tbtn active" id="mOTC" onclick="setMode('otc')">OTC</button>
+        <button class="tbtn" id="mIGX" onclick="setMode('igx')">IGX</button>
+      </div>
+    </div>
+    <div>
+      <div class="flabel">Role</div>
+      <div class="toggle-row">
+        <button class="tbtn active" id="rBuy" onclick="setRole('buy')">BUYER</button>
+        <button class="tbtn" id="rSell" onclick="setRole('sell')">SELLER</button>
+      </div>
+    </div>
+  </div>
+  <div style="font-size:10px;color:var(--text3);font-style:italic;margin-bottom:14px;padding:6px 8px;background:var(--bg2);border-left:2px solid var(--amber-dim)" id="modeDesc">OTC mode — price agreed with counterparty. Upload contract, we handle physical delivery end-to-end.</div>
+
+  <!-- OTC SECTION -->
+  <div id="secOTC">
+    <div class="sh">Contract Upload <span>PDF · DOCX · paste text</span></div>
+    <div class="upload-z" id="upZone" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="hDrop(event)">
+      <input type="file" accept=".pdf,.docx,.txt" onchange="hFile(this.files[0])">
+      <div class="uz-t" id="uzT">Drop Contract File Here</div>
+      <div class="uz-s">PDF, DOCX, TXT &nbsp;·&nbsp; <strong>or click to browse</strong></div>
+    </div>
+    <div class="fg">
+      <label class="flabel">Or paste contract text</label>
+      <textarea class="fc" id="cText" rows="5" style="resize:vertical" placeholder="This Gas Supply Agreement entered between Arvind Textiles Ltd. (Buyer) and Shell Energy India Pvt. Ltd. (Seller) for the supply of 8,000 MMBtu/day at Hazira, Gujarat, from 01 May 2026 to 31 May 2026 at ₹1,080/MMBtu..."></textarea>
+    </div>
+    <button style="padding:7px 20px;background:var(--amber);color:var(--bg);font-family:var(--mono);font-size:11px;font-weight:600;border:none;cursor:pointer;letter-spacing:.07em" onclick="analyse()">ANALYSE CONTRACT →</button>
+  </div>
+
+  <!-- IGX SECTION -->
+  <div id="secIGX" style="display:none">
+    <div class="sh">IGX Order Parameters</div>
+    <div class="fr2">
+      <div class="fg"><label class="flabel">Delivery Hub</label>
+        <select class="fc" id="igxHub" onchange="bldQ()">
+          <option value="">— Select —</option>
+          <option value="Dahej">Dahej (W. Gujarat)</option>
+          <option value="Hazira">Hazira (W. Gujarat)</option>
+          <option value="Mhaskal">Mhaskal (Maharashtra)</option>
+          <option value="Ankot">Ankot (Gujarat)</option>
+          <option value="Suvali">Suvali (Gujarat)</option>
+          <option value="Bokaro">Bokaro (Jharkhand)</option>
+        </select>
+      </div>
+      <div class="fg"><label class="flabel">Contract Type</label>
+        <select class="fc" id="igxCT" onchange="bldQ()">
+          <option>Daily</option><option>Weekly</option>
+          <option selected>Monthly</option><option>Fortnightly</option>
+        </select>
+      </div>
+    </div>
+    <div class="fr3">
+      <div class="fg"><label class="flabel">Volume (MMBtu)</label>
+        <input class="fc" type="number" id="igxV" value="8000" oninput="bldQ()"></div>
+      <div class="fg"><label class="flabel">Deliver From</label>
+        <input class="fc" type="date" id="igxF" onchange="bldQ()"></div>
+      <div class="fg"><label class="flabel">Deliver To</label>
+        <input class="fc" type="date" id="igxT" onchange="bldQ()"></div>
+    </div>
+    <div class="fg"><label class="flabel">Transport Preference</label>
+      <select class="fc" id="igxTr" onchange="bldQ()">
+        <option>GasRoute optimal (lowest ₹/MMBtu)</option>
+        <option>Gasified — Pipeline only</option>
+        <option>Liquefied — SSLNG Truck</option>
+        <option>Liquefied — ISO Container</option>
+      </select>
+    </div>
+    <div class="fg"><label class="flabel">Max Acceptable Price (₹/MMBtu) — optional</label>
+      <input class="fc" type="number" id="igxMax" placeholder="Leave blank for market"></div>
+  </div>
+
+  <!-- loading -->
+  <div class="loading-row" id="ldRow"><span class="spin"></span>Parsing contract with GasRoute AI — extracting parties, volumes, locations, dates...</div>
+
+  <!-- parse panel -->
+  <div class="parse-panel" id="ppanel">
+    <div class="pp-head"><h4>REVIEW EXTRACTED FIELDS</h4><span class="pp-tag">AI PARSED — CONFIRM ALL</span></div>
+    <div class="pp-grid" id="ppFields"></div>
+    <div style="padding:8px 12px;border-top:1px solid var(--border)">
+      <div style="font-size:9px;color:var(--text3);margin-bottom:6px">⚠ FLAGGED FIELDS = low confidence — verify before confirming</div>
+      <div id="rvHolder"></div>
+    </div>
+    <div class="pp-actions">
+      <button class="btn-ok" onclick="confirmP()">CONFIRM & GENERATE QUOTE →</button>
+      <button class="btn-no" onclick="rejectP()">RE-UPLOAD</button>
+    </div>
+  </div>
+
+  <!-- quote -->
+  <div class="qbox" id="qbox"></div>
+
+  <!-- success -->
+  <div class="succ" id="succBanner"></div>
+
+  <!-- execute -->
+  <button class="exec" id="execBtn" onclick="execOrder()">EXECUTE LOGISTICS ORDER</button>
+
+  <!-- facility -->
+  <div style="margin-top:14px">
+    <div class="sh">Your Facility</div>
+    <div class="fr2">
+      <div class="fg"><label class="flabel">Facility</label><input class="fc" value="Arvind Textiles — Naroda Plant, Ahmedabad"></div>
+      <div class="fg"><label class="flabel">Contact</label><input class="fc" value="Rajiv Mehta, Plant Manager"></div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- SIDEBAR -->
+<div class="side">
+
+  <!-- Your price position -->
+  <div class="sp">
+    <div class="sh">POSITION SUMMARY</div>
+    <div class="pos-grid">
+      <div class="pos-cell"><div class="pc-val a">₹1,071</div><div class="pc-lbl">Avg Locked ₹/MMBtu</div></div>
+      <div class="pos-cell"><div class="pc-val g">₹1,148</div><div class="pc-lbl">Market ₹/MMBtu Now</div></div>
+      <div class="pos-cell"><div class="pc-val g">+₹77</div><div class="pc-lbl">Saving vs Market</div></div>
+      <div class="pos-cell"><div class="pc-val" style="color:var(--cyan)">1,24,000</div><div class="pc-lbl">MMBtu Contracted</div></div>
+    </div>
+    <div style="margin-top:6px">
+      <div class="dr"><span class="dl">Total saving (₹ absolute)</span><span class="dv g">₹95,48,000</span></div>
+      <div class="dr"><span class="dl">Next arrival</span><span class="dv am">Tomorrow 06:00</span></div>
+      <div class="dr"><span class="dl">Active contracts</span><span class="dv">3</span></div>
+      <div class="dr"><span class="dl">Gas in transit today</span><span class="dv">86,000 MMBtu</span></div>
+    </div>
+  </div>
+
+  <!-- IGX live prices -->
+  <div class="sp">
+    <div class="sh">IGX SPOT PRICES <span>₹/MMBtu · live</span></div>
+    <div id="igxPrices"></div>
+  </div>
+
+  <!-- Market depth mini -->
+  <div class="sp">
+    <div class="sh">DEPTH — DAHEJ <span>best 3 each side</span></div>
+    <div class="depth-mini" id="depthMini"></div>
+  </div>
+
+  <!-- TRANSPORT AVAILABILITY — the rebuilt section -->
+  <div class="sp">
+    <div class="sh">TRANSPORT CAPACITY <span>₹/MMBtu logistics cost</span></div>
+
+    <div class="tree-section">
+      <div class="tree-cat">GASIFIED (PIPELINE) <span>pressurised natural gas</span></div>
+      <div class="tree-item">
+        <span class="ti-name">GGCL mainline (Dahej–Ahm.)</span>
+        <span class="ti-slots ok">HIGH CAP</span>
+        <span class="ti-price">₹18/MMBtu</span>
+      </div>
+      <div class="ti-bar"><div class="ti-fill" style="width:38%"></div></div>
+      <div class="tree-item">
+        <span class="ti-name">GAIL HVJ (Delhi corridor)</span>
+        <span class="ti-slots ok">AVAIL</span>
+        <span class="ti-price">₹22/MMBtu</span>
+      </div>
+      <div class="ti-bar"><div class="ti-fill" style="width:54%"></div></div>
+      <div class="tree-item">
+        <span class="ti-name">DUPL/UUPL (Dahej–Uran)</span>
+        <span class="ti-slots low">MOD CAP</span>
+        <span class="ti-price">₹25/MMBtu</span>
+      </div>
+      <div class="ti-bar"><div class="ti-fill warn" style="width:71%"></div></div>
+      <div class="tree-item">
+        <span class="ti-name">RGTIL (KG Basin–Hyd.)</span>
+        <span class="ti-slots ok">AVAIL</span>
+        <span class="ti-price">₹19/MMBtu</span>
+      </div>
+      <div class="ti-bar"><div class="ti-fill" style="width:30%"></div></div>
+      <div class="tree-item">
+        <span class="ti-name">GSPL (Gujarat grid)</span>
+        <span class="ti-slots low">MOD CAP</span>
+        <span class="ti-price">₹16/MMBtu</span>
+      </div>
+      <div class="ti-bar"><div class="ti-fill warn" style="width:65%"></div></div>
+      <div class="tree-item">
+        <span class="ti-name">IGL (Delhi city network)</span>
+        <span class="ti-slots none">FULL</span>
+        <span class="ti-price">₹28/MMBtu</span>
+      </div>
+      <div class="ti-bar"><div class="ti-fill crit" style="width:96%"></div></div>
+    </div>
+
+    <div class="tree-section" style="margin-top:8px">
+      <div class="tree-cat">LIQUEFIED (LNG/SSLNG) <span>cryogenic transport</span></div>
+      <div class="tree-item">
+        <span class="ti-name">SSLNG Truck (Hazira→)</span>
+        <span class="ti-slots ok">14 slots</span>
+        <span class="ti-price">₹32/MMBtu</span>
+      </div>
+      <div class="ti-bar"><div class="ti-fill" style="width:28%"></div></div>
+      <div class="tree-item">
+        <span class="ti-name">SSLNG Truck (Dahej→)</span>
+        <span class="ti-slots ok">9 slots</span>
+        <span class="ti-price">₹34/MMBtu</span>
+      </div>
+      <div class="ti-bar"><div class="ti-fill" style="width:44%"></div></div>
+      <div class="tree-item">
+        <span class="ti-name">ISO Container (road/rail)</span>
+        <span class="ti-slots low">4 slots</span>
+        <span class="ti-price">₹41/MMBtu</span>
+      </div>
+      <div class="ti-bar"><div class="ti-fill warn" style="width:60%"></div></div>
+      <div class="tree-item">
+        <span class="ti-name">LNG Regas + re-inject</span>
+        <span class="ti-slots ok">AVAIL</span>
+        <span class="ti-price">₹38/MMBtu</span>
+      </div>
+      <div class="ti-bar"><div class="ti-fill" style="width:22%"></div></div>
+      <div class="tree-item">
+        <span class="ti-name">Coastal SSLNG vessel</span>
+        <span class="ti-slots low">2 berths</span>
+        <span class="ti-price">₹29/MMBtu</span>
+      </div>
+      <div class="ti-bar"><div class="ti-fill warn" style="width:55%"></div></div>
+    </div>
+
+    <div class="tree-section" style="margin-top:8px">
+      <div class="tree-cat">STORAGE / BUFFER <span>interim holding</span></div>
+      <div class="tree-item">
+        <span class="ti-name">Dahej LNG tank (above-grd)</span>
+        <span class="ti-slots ok">AVAIL</span>
+        <span class="ti-price">₹8/MMBtu/day</span>
+      </div>
+      <div class="ti-bar"><div class="ti-fill" style="width:35%"></div></div>
+      <div class="tree-item">
+        <span class="ti-name">Hazira cryogenic store</span>
+        <span class="ti-slots low">PARTIAL</span>
+        <span class="ti-price">₹9/MMBtu/day</span>
+      </div>
+      <div class="ti-bar"><div class="ti-fill warn" style="width:68%"></div></div>
+      <div class="tree-item">
+        <span class="ti-name">Mobile ISO buffer (depot)</span>
+        <span class="ti-slots ok">6 units</span>
+        <span class="ti-price">₹12/MMBtu/day</span>
+      </div>
+      <div class="ti-bar"><div class="ti-fill" style="width:40%"></div></div>
+    </div>
+  </div>
+
+  <!-- Missed trade alerts -->
+  <div class="sp">
+    <div class="sh">MISSED TRADE ALERTS <span>your hubs · live</span></div>
+    <div id="missedFeed"></div>
+  </div>
+
+  <!-- Henry Hub / JKM reference -->
+  <div class="sp">
+    <div class="sh">GLOBAL BENCHMARKS <span>$/MMBtu</span></div>
+    <div class="dr"><span class="dl">Henry Hub (NYMEX)</span><span class="dv am">$4.18 <span style="color:var(--green2)">+0.8%</span></span></div>
+    <div class="dr"><span class="dl">JKM (Japan-Korea)</span><span class="dv am">$13.42 <span style="color:var(--red2)">-1.2%</span></span></div>
+    <div class="dr"><span class="dl">TTF (Netherlands)</span><span class="dv am">$11.87 <span style="color:var(--green2)">+0.4%</span></span></div>
+    <div class="dr"><span class="dl">Brent crude ($/bbl)</span><span class="dv">$74.30</span></div>
+    <div class="dr"><span class="dl">USD/INR</span><span class="dv">₹85.12</span></div>
+    <div class="dr"><span class="dl">IGX avg vs JKM premium</span><span class="dv r">+$0.24</span></div>
+  </div>
+
+  <!-- Weather / demand signal -->
+  <div class="sp">
+    <div class="sh">DEMAND SIGNALS</div>
+    <div class="dr"><span class="dl">Gujarat industrial demand</span><span class="dv g">HIGH ↑</span></div>
+    <div class="dr"><span class="dl">Power sector draw (today)</span><span class="dv am">+14% vs avg</span></div>
+    <div class="dr"><span class="dl">Fertiliser sector</span><span class="dv">Normal</span></div>
+    <div class="dr"><span class="dl">Ahmedabad temp. today</span><span class="dv">38°C (low gas heat demand)</span></div>
+    <div class="dr"><span class="dl">Monsoon ETA (Gujarat)</span><span class="dv">~Jun 10 — demand dip likely</span></div>
+  </div>
+
+</div><!-- /side -->
+</div><!-- /layout -->
+</div><!-- /shell new -->
+
+<!-- ══ TRACK ORDERS ══ -->
+<div class="shell" id="tab-track">
+  <div style="padding:14px">
+    <div class="sh" style="margin-bottom:12px">MY ORDERS — ARVIND TEXTILES LTD. <span>click to expand</span></div>
+    <div id="ocards"></div>
+  </div>
+</div>
+
+<!-- ══ IGX MARKET ══ -->
+<div class="shell" id="tab-igx">
+  <div style="padding:14px;max-width:820px">
+    <div class="sh" style="margin-bottom:12px">IGX MARKET DATA <span>2020–2026 · historical</span></div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:16px" id="igxCards"></div>
+    <div class="sh" style="margin-bottom:10px">MISSED TRADES BY HUB</div>
+    <table class="igt" id="igxTbl"></table>
+  </div>
+</div>
+
+<script>
+// clock
+setInterval(()=>{document.getElementById('clk').textContent=new Date().toTimeString().slice(0,8)},1000);
+
+// state
+let mode='otc',role='buy',pData=null,qData=null;
+
+// ── tabs
+function st(id,btn){
+  document.querySelectorAll('.shell').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.ntab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  btn.classList.add('active');
+  if(id==='track') renderOC();
+  if(id==='igx') renderIGX();
+}
+
+// ── mode/role
+function setMode(m){
+  mode=m;
+  document.getElementById('mOTC').classList.toggle('active',m==='otc');
+  document.getElementById('mIGX').classList.toggle('active',m==='igx');
+  document.getElementById('secOTC').style.display=m==='otc'?'block':'none';
+  document.getElementById('secIGX').style.display=m==='igx'?'block':'none';
+  document.getElementById('modeDesc').textContent=m==='otc'
+    ?'OTC mode — price agreed with counterparty. Upload contract, we handle physical delivery end-to-end.'
+    :'IGX mode — source gas through the exchange. Select hub, volume, dates. GasRoute arranges all physical logistics.';
+  resetQ();
+}
+function setRole(r){
+  role=r;
+  document.getElementById('rBuy').classList.toggle('active',r==='buy');
+  document.getElementById('rSell').classList.toggle('active',r==='sell');
+}
+
+// ── file
+function hFile(f){if(f){document.getElementById('uzT').textContent='📄 '+f.name+' — ready to analyse';}}
+function hDrop(e){e.preventDefault();document.getElementById('upZone').classList.remove('drag');if(e.dataTransfer.files[0])hFile(e.dataTransfer.files[0]);}
+
+// ── analyse
+const FB={seller:'Shell Energy India Pvt. Ltd.',buyer:'Arvind Textiles Ltd.',pickup:'Hazira LNG Terminal, Gujarat',dropoff:'Naroda Industrial Estate, Ahmedabad, Gujarat',volume:'8,000 MMBtu/day',period:'01 May 2026 – 31 May 2026',commodity_price:'₹1,080/MMBtu',contract_ref:'GSA-2026-SHELL-ARVIND-07',mode:'Pipeline + SSLNG Truck relay'};
+
+async function analyse(){
+  const txt=document.getElementById('cText').value.trim();
+  document.getElementById('ldRow').style.display='block';
+  document.getElementById('ppanel').style.display='none';
+  resetQ();
+  let p=FB;
+  if(txt.length>30){
+    try{
+      const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:700,messages:[{role:'user',content:`Extract from this Indian gas supply contract. Return ONLY JSON with keys: seller,buyer,pickup,dropoff,volume,period,commodity_price,contract_ref,mode. Prefix uncertain values with "~".\n\n${txt}`}]})});
+      const d=await r.json();
+      p=JSON.parse(d.content[0].text.replace(/```json|```/g,'').trim());
+    }catch(e){p=FB;}
+  }
+  document.getElementById('ldRow').style.display='none';
+  pData=p; renderPP(p);
+}
+
+function renderPP(p){
+  const fs=[['Seller',p.seller,0],['Buyer',p.buyer,0],['Pickup',p.pickup,(p.pickup||'').startsWith('~')],['Drop-off',p.dropoff,(p.dropoff||'').startsWith('~')],['Volume',p.volume,0],['Period',p.period,(p.period||'').startsWith('~')],['Commodity Price',p.commodity_price,0],['Contract Ref',p.contract_ref,0],['Transport Mode',p.mode||'GasRoute optimal',0]];
+  document.getElementById('ppFields').innerHTML=fs.map(([l,v,u])=>`<div class="pf${u?' unc':''}"><div class="pfl">${l}</div><div class="pfv"><input value="${(v||'').replace(/^~/,'')}" data-k="${l}"></div></div>`).join('');
+  const src=(p.pickup||'Origin').replace(/^~/,'').split(',')[0];
+  const dst=(p.dropoff||'Dest.').replace(/^~/,'').split(',')[0];
+  const md=(p.mode||'Pipeline + Truck').replace(/^~/,'');
+  document.getElementById('rvHolder').innerHTML=`<div class="rv"><div class="rv-nd"><div class="rv-dot s"></div><div class="rv-lbl">PICKUP</div><div class="rv-nm">${src}</div></div><div class="rv-line"><span class="rv-tag">${md}</span></div><div class="rv-nd"><div class="rv-dot d"></div><div class="rv-lbl">DROPOFF</div><div class="rv-nm">${dst}</div></div></div>`;
+  document.getElementById('ppanel').style.display='block';
+}
+
+function confirmP(){
+  document.querySelectorAll('#ppFields .pfv input').forEach(i=>{
+    if(pData&&i.dataset.k) pData[i.dataset.k]=i.value;
+  });
+  document.getElementById('ppanel').style.display='none';
+  buildOTCQ(pData);
+}
+function rejectP(){document.getElementById('ppanel').style.display='none';document.getElementById('cText').value='';}
+
+function buildOTCQ(p){
+  const vol=parseFloat((p.volume||'8000').replace(/[^0-9.]/g,''))||8000;
+  const cp=parseFloat((p.commodity_price||'1080').replace(/[^0-9.]/g,''))||1080;
+  const fee=24+Math.floor(Math.random()*16);
+  const ai=cp+fee; const tot=ai*vol; const mkt=1148;
+  qData={vol,cp,fee,ai,tot,mkt,ref:p.contract_ref||'GR-'+Date.now().toString().slice(-5),p};
+  showQ(qData,'OTC');
+}
+
+const HUB_P={Dahej:1092,Hazira:1148,Mhaskal:1187,Ankot:1210,Suvali:1044,Bokaro:910};
+function bldQ(){
+  if(mode!=='igx') return;
+  const hub=document.getElementById('igxHub').value;
+  const vol=parseFloat(document.getElementById('igxV').value)||0;
+  if(!hub||!vol) return;
+  const cp=HUB_P[hub]||1100; const fee=22+Math.floor(Math.random()*20);
+  const ai=cp+fee; const tot=ai*vol; const mkt=1148;
+  qData={vol,cp,fee,ai,tot,mkt,ref:'IGX-'+Date.now().toString().slice(-5),hub,p:{pickup:hub,dropoff:'Naroda Plant',volume:vol+' MMBtu',period:document.getElementById('igxF').value+' – '+document.getElementById('igxT').value}};
+  showQ(qData,'IGX');
+}
+
+function showQ(q,type){
+  const saving=q.mkt-q.ai; const savingPct=((saving/q.mkt)*100).toFixed(1);
+  const qb=document.getElementById('qbox');
+  qb.style.display='block';
+  qb.innerHTML=`
+    <div style="font-size:9px;color:var(--amber);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">GASROUTE QUOTE · ${type} · ALL-IN DELIVERED</div>
+    <div class="q-big">
+      <span class="q-price">₹${q.ai.toLocaleString('en-IN')}</span>
+      <span class="q-unit">/ MMBtu · incl. all logistics</span>
+    </div>
+    <div class="q-context">Commodity ₹${q.cp.toLocaleString('en-IN')} + GasRoute logistics fee (opaque, included) · Market price ₹${q.mkt.toLocaleString('en-IN')}/MMBtu</div>
+    <div class="q-grid">
+      <span class="ql">All-in rate (₹/MMBtu)</span><span class="qv hl">₹${q.ai.toLocaleString('en-IN')}</span>
+      <span class="ql">Volume</span><span class="qv">${q.vol.toLocaleString('en-IN')} MMBtu</span>
+      <span class="ql">Total contract value (₹)</span><span class="qv hl">₹${q.tot.toLocaleString('en-IN')}</span>
+      <span class="ql">Total contract value (USD)</span><span class="qv">$${Math.round(q.tot/85).toLocaleString('en-IN')}</span>
+      <span class="q-div"></span>
+      <span class="ql">Ref</span><span class="qv">${q.ref}</span>
+    </div>
+    ${saving>0?`<div class="q-savings"><span class="q-sav-lbl">vs current IGX market (₹${q.mkt}/MMBtu)</span><span class="q-sav-val">You save ₹${saving}/MMBtu · ${savingPct}% · ₹${(saving*q.vol).toLocaleString('en-IN')} total</span></div>`:''}`;
+  document.getElementById('execBtn').style.display='block';
+}
+
+function resetQ(){document.getElementById('qbox').style.display='none';document.getElementById('execBtn').style.display='none';document.getElementById('succBanner').style.display='none';qData=null;}
+
+function execOrder(){
+  if(!qData) return;
+  document.getElementById('execBtn').style.display='none';
+  const b=document.getElementById('succBanner');
+  b.style.display='block';
+  b.innerHTML=`<div class="succ-t">ORDER EXECUTING — LOGISTICS DISPATCHING</div><div class="succ-r">REF: ${qData.ref} &nbsp;·&nbsp; ${qData.vol.toLocaleString()} MMBtu &nbsp;·&nbsp; ₹${qData.ai}/MMBtu all-in &nbsp;·&nbsp; GasRoute booking capacity now</div>`;
+}
+
+// ── SIDEBAR DATA
+const IGX_HUBS=[
+  {h:'Dahej',p:1092,c:+1.2,ms:746},{h:'Hazira',p:1148,c:-0.4,ms:99},
+  {h:'Mhaskal',p:1187,c:+2.1,ms:370},{h:'Ankot',p:1210,c:+0.8,ms:207},
+  {h:'Suvali',p:1044,c:-1.1,ms:137},{h:'Bokaro',p:910,c:+0.3,ms:86},
+];
+function renderSide(){
+  document.getElementById('igxPrices').innerHTML=IGX_HUBS.map(f=>`
+    <div class="dr">
+      <span class="dl" style="color:var(--text2)">${f.h}</span>
+      <span style="display:flex;gap:10px;align-items:baseline">
+        <span class="dv am" style="font-size:13px;font-weight:500">₹${f.p}</span>
+        <span class="dv ${f.c>=0?'g':'r'}" style="font-size:10px">${f.c>=0?'+':''}${f.c}%</span>
+        <span class="dv" style="color:var(--text4);font-size:9px">${f.ms}ms</span>
+      </span>
+    </div>`).join('');
+
+  const mid=1092;
+  const asks=[mid+8,mid+22,mid+40].map((p,i)=>({p,v:[5850,10500,7200][i]}));
+  const bids=[mid-6,mid-20,mid-38].map((p,i)=>({p,v:[4800,9600,6000][i]}));
+  const max=10500;
+  let dm='';
+  asks.slice().reverse().forEach(a=>{dm+=`<span class="dm-price ask">₹${a.p}</span><div class="dm-bar-t"><div class="dm-bar-fill ask" style="width:${(a.v/max*100).toFixed(0)}%"></div></div><span class="dm-vol">${(a.v/1000).toFixed(1)}K</span>`;});
+  dm+=`<span class="dm-spread-line" style="grid-column:1/-1">SPREAD ₹${mid+8-(mid-6)}</span>`;
+  bids.forEach(b=>{dm+=`<span class="dm-price bid">₹${b.p}</span><div class="dm-bar-t"><div class="dm-bar-fill" style="width:${(b.v/max*100).toFixed(0)}%"></div></div><span class="dm-vol">${(b.v/1000).toFixed(1)}K</span>`;});
+  document.getElementById('depthMini').innerHTML=dm;
+
+  document.getElementById('missedFeed').innerHTML=IGX_HUBS.slice(0,4).map(f=>`
+    <div class="mf-row">
+      <span class="mf-hub">${f.h}</span>
+      <span class="mf-vol">${f.ms} hist. missed</span>
+      <span class="mf-spread">⚡ ₹${[199,131,154,193,172,94][IGX_HUBS.indexOf(f)]}/MMBtu spread</span>
+    </div>`).join('');
+}
+
+// ── ORDER CARDS
+const ORDERS=[
+  {ref:'GR-2026-031',type:'pip',status:'flowing',from:'Hazira LNG Terminal',to:'Naroda Plant, Ahmedabad',vol:62000,price:1080,mkt:1148,flow:2000,pct:68,eta:'Tomorrow 06:00',mode:'Pipeline (GGCL → Ahm. spur)',days:1,seller:'Shell Energy India'},
+  {ref:'GR-2026-024',type:'trk',status:'transit',from:'Dahej LNG Terminal',to:'Naroda Plant, Ahmedabad',vol:24000,price:1055,mkt:1148,flow:0,pct:40,eta:'16 Apr 2026 14:00',mode:'SSLNG Truck (3 tankers)',days:2,seller:'RLNG Markets Pvt. Ltd.'},
+  {ref:'GR-2026-017',type:'pen',status:'pending',from:'Mhaskal Hub',to:'Naroda Plant, Ahmedabad',vol:38000,price:1095,mkt:1148,flow:0,pct:0,eta:'22 Apr 2026',mode:'Pipeline (DUPL mainline)',days:3,seller:'GAIL (India) Ltd.'},
+];
+function renderOC(){
+  document.getElementById('ocards').innerHTML=ORDERS.map((o,i)=>{
+    const sav=o.mkt-o.price;
+    return `<div class="oc ${o.type}" id="oc${i}" onclick="togOC(${i})">
+      <div class="oc-h">
+        <div><div class="oc-ref">${o.ref}</div><div class="oc-sub">${o.from} → ${o.to}</div></div>
+        <span class="oc-badge ${o.status}">${o.status==='flowing'?'FLOWING':o.status==='transit'?'IN TRANSIT':'SCHEDULED'}</span>
+      </div>
+      <div class="oc-kpis">
+        <div class="kp"><div class="kp-v a">${o.eta.split(' ').slice(0,2).join(' ')}</div><div class="kp-l">ETA Arrival</div></div>
+        <div class="kp"><div class="kp-v g">₹${o.price} <span style="font-size:11px">+${sav}</span></div><div class="kp-l">Locked · mkt ₹${o.mkt}</div></div>
+        <div class="kp"><div class="kp-v ${o.flow?'g':'w'}">${o.flow?o.flow.toLocaleString():'—'}</div><div class="kp-l">MMBtu/day flow</div></div>
+      </div>
+      <div class="oc-body" id="ocb${i}">
+        <div class="prog"><div class="prog-f ${o.type==='pip'?'pipe':''}" style="width:${o.pct}%"></div></div>
+        <div class="prog-lbl"><span>${o.from.split(' ')[0]}</span><span>${o.pct}% delivered</span><span>${o.to.split(',')[0]}</span></div>
+        <div class="dg">
+          <div class="dg-r"><span>Seller</span><span>${o.seller}</span></div>
+          <div class="dg-r"><span>Volume</span><span>${o.vol.toLocaleString()} MMBtu</span></div>
+          <div class="dg-r"><span>Mode</span><span>${o.mode}</span></div>
+          <div class="dg-r"><span>Full ETA</span><span>${o.eta}</span></div>
+          <div class="dg-r"><span>Locked ₹/MMBtu</span><span style="color:var(--amber)">₹${o.price}</span></div>
+          <div class="dg-r"><span>Total value</span><span>₹${(o.price*o.vol).toLocaleString()}</span></div>
+          <div class="dg-r"><span>Saving vs market</span><span style="color:var(--green2)">+₹${sav}/MMBtu · ₹${(sav*o.vol).toLocaleString()} total</span></div>
+          <div class="dg-r"><span>Flow today</span><span>${o.flow?o.flow.toLocaleString()+' MMBtu/day':'Not yet flowing'}</span></div>
+        </div>
+      </div>
+    </div>`;}).join('');
+}
+function togOC(i){const b=document.getElementById('ocb'+i);b.style.display=b.style.display==='block'?'none':'block';}
+
+// ── IGX TAB
+function renderIGX(){
+  document.getElementById('igxCards').innerHTML=[['11,316','Total Sessions'],['1,816 (16%)','Missed Trades'],['$182.7M','Missed Value'],['$4.8B','Total Opportunity']].map(([v,l])=>`<div style="background:var(--bg2);border:1px solid var(--border);padding:12px;text-align:center"><div style="font-size:17px;font-weight:600;color:var(--amber3)">${v}</div><div style="font-size:9px;color:var(--text3);margin-top:3px;text-transform:uppercase;letter-spacing:.06em">${l}</div></div>`).join('');
+  const rows=[['Dahej',746,'$116.9M','₹199','Pipeline + SSLNG'],['Mhaskal',370,'$20.0M','₹154','Pipeline'],['Hazira',99,'$17.9M','₹131','Regas terminal'],['Suvali',137,'$9.2M','₹172','SSLNG Truck'],['Ankot',207,'$8.7M','₹193','Pipeline'],['Bhadbhut',40,'$2.7M','₹234','Truck + pipe'],['Bokaro',86,'$1.9M','₹94','ISO Container']];
+  document.getElementById('igxTbl').innerHTML=`<thead><tr>${['Hub','Missed','Value (USD)','Avg Spread','Logistics Mode'].map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((c,i)=>`<td style="color:${i===0?'var(--text)':i===3?'var(--amber)':'var(--text2)'}">${c}</td>`).join('')}</tr>`).join('')}</tbody>`;
+}
+
+// IGX date init
+(()=>{const t=new Date();t.setDate(t.getDate()+1);const e=new Date(t);e.setDate(e.getDate()+30);document.getElementById('igxF').value=t.toISOString().slice(0,10);document.getElementById('igxT').value=e.toISOString().slice(0,10);})();
+
+// ticker
+document.getElementById('tickers').innerHTML=[{h:'DH',p:1092,c:+1.2},{h:'HZ',p:1148,c:-.4},{h:'MS',p:1187,c:+2.1},{h:'AN',p:1210,c:+.8},{h:'SV',p:1044,c:-1.1},{h:'BK',p:910,c:+.3}].map(t=>`<span class="tick"><span class="t-hub">${t.h}</span><span class="t-p">₹${t.p}</span><span class="t-c ${t.c>=0?'up':'dn'}">${t.c>=0?'+':''}${t.c}%</span></span>`).join('');
+
+renderSide();
+renderOC();
+</script>
