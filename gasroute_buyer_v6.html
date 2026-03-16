@@ -1,0 +1,2063 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js">
+// ═══════════════════════════════════════════════════════════════
+// LIVE TRACKING
+// ═══════════════════════════════════════════════════════════════
+
+
+
+
+const MODE_COLORS = {truck:'#e8980a', pipe:'#1ab8cc', ship:'#7b68ee', rail:'#3d9e52', wh:'#706050'};
+const MODE_ICONS = {truck:'▲', pipe:'◆', ship:'●', rail:'■', wh:'⬡'};
+
+function shipIcon(s) {
+  const c = MODE_COLORS[s.mode];
+  const i = MODE_ICONS[s.mode];
+  const pulse = (s.status==='IN TRANSIT'||s.status==='FLOWING') ? `animation:pip 1.5s infinite` : '';
+  return L.divIcon({
+    html: `<div style="position:relative"><div style="width:14px;height:14px;background:${c};border-radius:${s.mode==='ship'?'50%':s.mode==='wh'?'3px':'2px'};display:flex;align-items:center;justify-content:center;font-size:8px;color:#080806;font-weight:bold;box-shadow:0 0 8px ${c}80;${pulse}">${i}</div>${s.progress>0&&s.progress<1?`<div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);font-size:8px;color:${c};font-family:IBM Plex Mono,monospace;white-space:nowrap">${(s.progress*100).toFixed(0)}%</div>`:''}`,
+    className:'', iconAnchor:[7,7]
+  });
+}
+
+function drawShipment(s, map) {
+  // Route dashed line
+  if (s.mode !== 'wh') {
+    const line = L.polyline([s.oCoord, s.dCoord], {
+      color: MODE_COLORS[s.mode], weight:1.5, opacity:0.25, dashArray:'4,6'
+    }).addTo(map);
+    window._routeLines[s.id] = line;
+  }
+
+  // Moving marker at current position
+  const pos = interpolatePos(s);
+  const marker = L.marker(pos, {icon: shipIcon(s)})
+    .addTo(map)
+    .bindPopup(`
+      <div style="font-family:IBM Plex Mono,monospace;font-size:11px;min-width:200px;background:#0f0e0c;color:#e8dcc8;border:none">
+        <div style="font-weight:600;color:${MODE_COLORS[s.mode]};margin-bottom:6px">${s.id} · ${s.label}</div>
+        <div style="color:#a89880;margin-bottom:2px">${s.origin}</div>
+        <div style="color:#706050;font-size:9px;margin-bottom:6px">↓ ${s.dest}</div>
+        <div style="display:flex;justify-content:space-between;font-size:10px;border-top:1px solid rgba(255,255,255,0.07);padding-top:6px">
+          <span style="color:#706050">ETA</span><span style="color:#e8980a">${s.eta}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10px">
+          <span style="color:#706050">Volume</span><span>${s.vol}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:10px">
+          <span style="color:#706050">Status</span><span style="color:#50c468">${s.status}</span>
+        </div>
+        ${s.driver?`<div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:#706050">Driver</span><span>${s.driver} · ${s.truck}</span></div>`:''}
+        ${s.vessel?`<div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:#706050">Vessel</span><span>${s.vessel}</span></div>`:''}
+        ${s.train?`<div style="display:flex;justify-content:space-between;font-size:10px"><span style="color:#706050">Train</span><span>${s.train} · ${s.containers}</span></div>`:''}
+      </div>
+    `, {className:'gas-popup'});
+
+  window._markers[s.id] = marker;
+}
+
+function animateShipments(map) {
+  SHIPMENTS.forEach(s => {
+    if (s.mode === 'wh' || s.status === 'SCHEDULED') return;
+    // Gently nudge progress for visual animation
+    const nudge = 0.002 + Math.random() * 0.003;
+    s.progress = Math.min(0.99, s.progress + nudge);
+    const marker = window._markers[s.id];
+    if (marker) {
+      marker.setLatLng(interpolatePos(s));
+      marker.setIcon(shipIcon(s));
+    }
+  });
+}
+
+// ── FILTER BY MODE ─────────────────────────────────────────────
+function filterMode(mode, btn) {
+  currentFilter = mode;
+  document.querySelectorAll('.mmode-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderShipmentCards(mode);
+  // Show/hide map markers
+  SHIPMENTS.forEach(s => {
+    const marker = window._markers[s.id];
+    if (!marker) return;
+    if (mode === 'all' || s.mode === mode) {
+      if (!window._map.hasLayer(marker)) marker.addTo(window._map);
+    } else {
+      if (window._map.hasLayer(marker)) window._map.removeLayer(marker);
+    }
+  });
+}
+
+// ── INIT ON TAB SWITCH ─────────────────────────────────────────
+// Patch st() to init map when track tab opened
+const _origSt = window.st || function(){};
+function st(id, btn) {
+  document.querySelectorAll('.shell').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nt').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  btn.classList.add('active');
+  if (id === 'track') {
+    setTimeout(() => {
+      initMap();
+      renderHeatmap();
+      renderShipmentCards('all');
+      renderNomLog();
+      if (window._map) window._map.invalidateSize();
+    }, 50);
+  }
+}
+
+// Leaflet popup custom style
+const popupStyle = document.createElement('style');
+popupStyle.textContent = `.leaflet-popup-content-wrapper{background:#0f0e0c!important;border:1px solid rgba(232,152,10,0.3)!important;border-radius:0!important;box-shadow:0 4px 20px rgba(0,0,0,.7)!important;padding:0!important}.leaflet-popup-content{margin:12px!important}.leaflet-popup-tip{background:#0f0e0c!important}.gas-tooltip{background:transparent!important;border:none!important;box-shadow:none!important;padding:0!important}.leaflet-tooltip{background:#0f0e0c!important;border:1px solid rgba(255,255,255,0.07)!important;border-radius:0!important;color:#e8dcc8!important;font-family:IBM Plex Mono,monospace!important;font-size:10px!important;box-shadow:none!important}`;
+document.head.appendChild(popupStyle);
+
+</script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#080806;--bg1:#0f0e0c;--bg2:#161513;--bg3:#1e1c19;--bg4:#272420;--bg5:#302d28;
+  --amber:#e8980a;--amber2:#f5aa18;--amber3:#ffc040;--amber-dim:#6b4408;--amber-pale:#1a0e02;
+  --green:#3d9e52;--green2:#50c468;--green-dim:#0d2814;
+  --red:#c43838;--red2:#e04848;--red-dim:#2e0c0c;
+  --cyan:#1ab8cc;--cyan-dim:#062830;
+  --text:#e8dcc8;--text2:#a89880;--text3:#706050;--text4:#483e34;
+  --border:rgba(255,255,255,0.07);
+  --mono:'IBM Plex Mono',monospace;
+}
+html,body{background:var(--bg);color:var(--text);font-family:var(--mono);font-size:11px;line-height:1.4;min-height:100vh;overflow-x:hidden}
+
+.top{height:34px;background:var(--bg1);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:0 14px;position:sticky;top:0;z-index:50}
+.logo{font-size:13px;font-weight:600;color:var(--amber);letter-spacing:.1em}
+.logo span{color:var(--text3);font-weight:300}
+.top-r{display:flex;align-items:center;gap:16px;font-size:10px;color:var(--text3)}
+.pip{width:5px;height:5px;border-radius:50%;background:var(--green2);display:inline-block;margin-right:4px;animation:pip 2s infinite}
+@keyframes pip{0%,100%{opacity:1}50%{opacity:.2}}
+.ticker{display:flex;gap:16px;overflow:hidden}
+.tick{display:flex;gap:5px;font-size:10px;white-space:nowrap}
+.th{color:var(--text3)}.tp{color:var(--amber);font-weight:500}
+.tc.up{color:var(--green2)}.tc.dn{color:var(--red2)}
+
+.nav{display:flex;background:var(--bg1);border-bottom:1px solid var(--border);padding:0 14px}
+.nt{padding:8px 14px;font-size:10px;color:var(--text3);background:none;border:none;cursor:pointer;border-bottom:2px solid transparent;letter-spacing:.06em;text-transform:uppercase;font-family:var(--mono);transition:color .12s}
+.nt.active{color:var(--amber);border-bottom-color:var(--amber)}
+.nt:hover:not(.active){color:var(--text2)}
+.nbadge{background:var(--amber-dim);color:var(--amber);font-size:9px;padding:1px 5px;margin-left:4px}
+
+.shell{display:none}.shell.active{display:block}
+.layout{display:grid;grid-template-columns:1fr 290px;min-height:calc(100vh - 66px)}
+.main{padding:14px;border-right:1px solid var(--border);overflow-y:auto}
+.side{background:var(--bg1);overflow-y:auto}
+.sh{font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--amber);border-bottom:1px solid var(--border);padding-bottom:5px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:baseline}
+.sh span{color:var(--text4);font-size:9px;text-transform:none;letter-spacing:.02em}
+
+.savings-hero{background:var(--bg2);border:1px solid var(--border);border-left:3px solid var(--amber);padding:14px;margin-bottom:14px;display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:10px}
+.sh-cell{text-align:center}
+.sh-val{font-size:22px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.sh-val.big{font-size:26px}
+.sh-val.green{color:var(--green2)}.sh-val.amber{color:var(--amber3)}.sh-val.cyan{color:var(--cyan)}
+.sh-lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:3px}
+.sh-sub{font-size:10px;color:var(--text2);margin-top:2px}
+.savings-pulse{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green2);margin-right:4px;animation:pip 1.5s infinite}
+
+.oc{background:var(--bg2);border:1px solid var(--border);margin-bottom:10px;position:relative}
+.oc::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
+.oc.pip::before{background:var(--green)}.oc.trk::before{background:var(--amber)}.oc.pen::before{background:var(--text4)}
+.oc-head{padding:10px 12px;display:flex;justify-content:space-between;align-items:flex-start}
+.oc-ref{font-size:12px;font-weight:500;color:var(--text)}
+.oc-sub{font-size:10px;color:var(--text3);margin-top:2px}
+.oc-badge{font-size:9px;padding:2px 6px;letter-spacing:.05em}
+.oc-badge.flowing{background:var(--green-dim);color:var(--green2)}
+.oc-badge.transit{background:var(--amber-pale);color:var(--amber)}
+.oc-badge.pending{background:var(--bg4);color:var(--text3);border:1px solid var(--bg5)}
+.oc-kpis{display:grid;grid-template-columns:1fr 1fr 1fr;border-top:1px solid var(--border)}
+.kp{padding:7px 10px;border-right:1px solid var(--border);text-align:center}
+.kp:last-child{border-right:none}
+.kp-v{font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.kp-v.g{color:var(--green2)}.kp-v.a{color:var(--amber)}.kp-v.w{color:var(--red2)}
+.kp-l{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
+.oc-actions{display:flex;gap:6px;padding:8px 12px;border-top:1px solid var(--border);background:var(--bg3);flex-wrap:wrap}
+.oc-btn{padding:4px 10px;font-size:9px;font-family:var(--mono);background:var(--bg4);border:1px solid var(--border);color:var(--text2);cursor:pointer;letter-spacing:.05em;text-transform:uppercase;transition:all .12s}
+.oc-btn:hover{background:var(--bg5);color:var(--text)}
+.oc-btn.amber{background:var(--amber-dim);color:var(--amber);border-color:var(--amber-dim)}
+.oc-btn.amber:hover{background:var(--amber);color:var(--bg)}
+.oc-btn.active-modal{background:var(--amber);color:var(--bg);border-color:var(--amber)}
+
+.sp{padding:10px 12px;border-bottom:1px solid var(--border)}
+.dr{display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+.dr:last-child{border-bottom:none}
+.dl{font-size:10px;color:var(--text3)}.dv{font-size:10px;color:var(--text2);font-variant-numeric:tabular-nums}
+.dv.am{color:var(--amber)}.dv.g{color:var(--green2)}.dv.r{color:var(--red2)}.dv.c{color:var(--cyan)}
+.igx-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:10px}
+.igx-hub{color:var(--text2);font-weight:500}.igx-price{color:var(--amber);font-variant-numeric:tabular-nums}
+.igx-chg.up{color:var(--green2)}.igx-chg.dn{color:var(--red2)}
+.pos-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px}
+.pos-cell{text-align:center;padding:7px;background:var(--bg3)}
+.pc-val{font-size:17px;font-weight:600;font-variant-numeric:tabular-nums}
+.pc-lbl{font-size:9px;color:var(--text3);margin-top:2px;text-transform:uppercase;letter-spacing:.05em}
+.tree-cat{font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:var(--amber);padding:4px 0 2px;display:flex;justify-content:space-between}
+.tree-item{display:flex;justify-content:space-between;padding:2px 0 2px 8px;border-left:1px solid var(--bg5)}
+.ti-n{font-size:10px;color:var(--text2)}.ti-s{font-size:10px}.ti-s.ok{color:var(--green2)}.ti-s.low{color:var(--amber)}.ti-s.none{color:var(--red2)}
+.ti-p{font-size:10px;color:var(--amber);margin-left:4px}
+.ti-bar{height:2px;background:var(--bg5);margin:2px 0 2px 8px}
+.ti-fill{height:100%;background:var(--green)}.ti-fill.warn{background:var(--amber)}.ti-fill.crit{background:var(--red)}
+.mf-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04);font-size:10px}
+
+/* ── MODAL: each is absolutely positioned, independently draggable ── */
+.modal-wrap{
+  position:fixed;
+  z-index:300;
+  display:none;
+  pointer-events:none;
+}
+.modal-wrap.open{display:block;pointer-events:auto}
+.modal{
+  background:var(--bg2);
+  border:1px solid var(--amber-dim);
+  display:flex;flex-direction:column;
+  box-shadow:0 8px 40px rgba(0,0,0,.7);
+  pointer-events:auto;
+}
+.modal-bar{
+  height:28px;background:var(--bg1);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;padding:0 12px;
+  cursor:grab;flex-shrink:0;user-select:none;
+}
+.modal-bar:active{cursor:grabbing}
+.modal-title{font-size:10px;font-weight:500;color:var(--amber);letter-spacing:.07em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:340px}
+.modal-controls{display:flex;gap:5px;align-items:center;flex-shrink:0}
+.modal-btn{background:none;border:1px solid var(--border);color:var(--text3);font-family:var(--mono);font-size:9px;padding:1px 6px;cursor:pointer;transition:all .12s;white-space:nowrap}
+.modal-btn:hover{color:var(--text);border-color:var(--text4)}
+.modal-btn.close-btn:hover{background:var(--red-dim);color:var(--red2);border-color:var(--red-dim)}
+.modal-body{padding:14px;overflow-y:auto;flex:1;min-height:0}
+.resize-handle{position:absolute;bottom:0;right:0;width:14px;height:14px;cursor:se-resize;background:linear-gradient(135deg,transparent 50%,var(--border) 50%)}
+
+/* util modal */
+.util-header{display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px;margin-bottom:14px}
+.util-cell{background:var(--bg3);padding:10px;text-align:center}
+.uc-val{font-size:18px;font-weight:600;font-variant-numeric:tabular-nums}
+.uc-val.g{color:var(--green2)}.uc-val.a{color:var(--amber)}.uc-val.r{color:var(--red2)}
+.uc-lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-top:3px}
+.util-bar-track{height:20px;background:var(--bg4);position:relative;margin:6px 0 3px}
+.util-bar-fill{height:100%;transition:width .5s;position:relative}
+.util-bar-fill::after{content:attr(data-pct);position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:600;color:var(--bg)}
+.util-tap-line{position:absolute;top:0;bottom:0;width:2px;background:var(--amber);opacity:.8}
+.util-bar-labels{display:flex;justify-content:space-between;font-size:9px;color:var(--text4)}
+.swing-row{display:flex;gap:8px;margin-bottom:14px}
+.swing-cell{background:var(--bg3);padding:8px 10px;flex:1;text-align:center}
+.sw-v{font-size:14px;font-weight:600;color:var(--amber)}
+.sw-l{font-size:9px;color:var(--text3);margin-top:2px}
+.cal-hdr{display:grid;grid-template-columns:repeat(7,1fr);gap:3px;margin-bottom:4px}
+.cal-hdr span{font-size:8px;color:var(--text4);text-align:center;text-transform:uppercase}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:3px}
+.cal-cell{background:var(--bg3);padding:5px 3px;text-align:center;cursor:pointer;border:1px solid transparent;transition:all .12s;position:relative}
+.cal-cell:hover{border-color:var(--amber-dim);background:var(--bg4)}
+.cal-cell.today{border-color:var(--amber);background:var(--amber-pale)}
+.cal-cell.past{opacity:.5}.cal-cell.over{background:var(--green-dim)}.cal-cell.under{background:var(--red-dim)}
+.cal-day{font-size:8px;color:var(--text4);margin-bottom:2px}
+.cal-vol{font-size:10px;font-weight:500;color:var(--text2);font-variant-numeric:tabular-nums}
+.cal-vol.over{color:var(--green2)}.cal-vol.under{color:var(--red2)}.cal-vol.exact{color:var(--amber)}
+.cal-edit{position:absolute;bottom:2px;right:2px;width:6px;height:6px;border-radius:50%;background:var(--amber-dim)}
+
+/* meter */
+.meter-hero{display:flex;align-items:center;gap:20px;margin-bottom:14px;padding:12px;background:var(--bg3);border:1px solid var(--border)}
+.meter-gauge{position:relative;width:90px;height:90px;flex-shrink:0}
+.mi-rate{font-size:24px;font-weight:600;color:var(--amber3);font-variant-numeric:tabular-nums}
+.mi-unit{font-size:10px;color:var(--text3)}
+.mi-status{display:flex;align-items:center;gap:6px;margin-top:4px;font-size:10px}
+.status-pip{width:7px;height:7px;border-radius:50%}
+.status-pip.flowing{background:var(--green2);animation:pip 1.5s infinite}
+.status-pip.paused{background:var(--amber)}.status-pip.offline{background:var(--red2)}
+.mt-bars{display:flex;gap:2px;align-items:flex-end;height:50px;padding:2px 0}
+.mt-bar{flex:1;background:var(--amber-dim);min-height:2px;position:relative;transition:height .3s}
+.mt-bar.active{background:var(--amber)}
+.mt-bar:hover::after{content:attr(data-v);position:absolute;bottom:calc(100% + 3px);left:50%;transform:translateX(-50%);font-size:9px;color:var(--text);background:var(--bg4);padding:1px 4px;white-space:nowrap;pointer-events:none}
+.mt-labels{display:flex;justify-content:space-between;font-size:8px;color:var(--text4);margin-top:3px}
+.meter-stats{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+.ms-cell{background:var(--bg3);padding:8px;text-align:center}
+.ms-v{font-size:14px;font-weight:600;font-variant-numeric:tabular-nums}
+.ms-l{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
+.ml-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:10px}
+.ml-time{color:var(--text4)}.ml-event{color:var(--text2)}.ml-vol{color:var(--amber);font-variant-numeric:tabular-nums}
+
+/* supply */
+.filter-bar{display:flex;gap:6px;align-items:center;margin-bottom:10px;padding:7px 10px;background:var(--bg3);flex-wrap:wrap}
+.filter-lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em}
+.filter-btn{padding:3px 10px;font-size:9px;font-family:var(--mono);background:var(--bg4);border:1px solid var(--border);color:var(--text3);cursor:pointer;transition:all .12s}
+.filter-btn.active{background:var(--amber-dim);color:var(--amber);border-color:var(--amber-dim)}
+.filter-btn:hover:not(.active){color:var(--text2)}
+.filter-range{background:var(--bg2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:10px;padding:3px 8px;outline:none;width:70px}
+.supply-card{background:var(--bg3);border:1px solid var(--border);padding:12px;margin-bottom:8px;position:relative}
+.supply-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px}
+.supply-card.secure::before{background:var(--green)}.supply-card.partial::before{background:var(--amber)}.supply-card.atrisk::before{background:var(--red)}
+.sc-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+.sc-ref{font-size:11px;font-weight:500;color:var(--text)}.sc-eta{font-size:10px;color:var(--text3);margin-top:1px}
+.sc-badge{font-size:9px;padding:2px 7px;letter-spacing:.05em}
+.sc-badge.secure{background:var(--green-dim);color:var(--green2)}.sc-badge.partial{background:var(--amber-pale);color:var(--amber)}.sc-badge.atrisk{background:var(--red-dim);color:var(--red2)}
+.sc-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;font-size:10px}
+.sc-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+.sc-row span:first-child{color:var(--text3)}.sc-row span:last-child{color:var(--text2)}
+.sc-src-title{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin:8px 0 4px}
+.sc-src-row{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:10px}
+.src-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.src-dot.ok{background:var(--green)}.src-dot.warn{background:var(--amber)}.src-dot.fail{background:var(--red)}
+.src-name{color:var(--text2);flex:1}.src-status{color:var(--text3)}
+.resil-bar{height:6px;background:var(--bg5);margin:8px 0 3px}
+.resil-fill{height:100%}
+
+/* demand */
+.df-controls{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px}
+.df-cell{background:var(--bg3);padding:8px 10px}
+.df-label{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px}
+.df-input{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:12px;padding:5px 8px;outline:none}
+.df-input:focus{border-color:var(--amber-dim)}
+.df-chart{height:70px;display:flex;align-items:flex-end;gap:2px;padding:3px;background:var(--bg3)}
+.dfc-bar{flex:1;min-height:3px;background:var(--amber-dim);position:relative;transition:height .2s;cursor:pointer}
+.dfc-bar.override{background:var(--amber)}.dfc-bar:hover{background:var(--amber2)}
+.dfc-labels{display:flex;justify-content:space-between;font-size:8px;color:var(--text4);margin-bottom:8px}
+.df-summary{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.dfs-cell{background:var(--bg3);padding:5px 10px;text-align:center;flex:1}
+.dfs-v{font-size:12px;font-weight:600;color:var(--amber)}.dfs-l{font-size:9px;color:var(--text3)}
+
+/* new order */
+.flabel{font-size:9px;text-transform:uppercase;letter-spacing:.07em;color:var(--text3);display:block;margin-bottom:3px}
+.fc{width:100%;background:var(--bg2);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:11px;padding:6px 8px;outline:none;-webkit-appearance:none;appearance:none;transition:border-color .15s}
+.fc:focus{border-color:var(--amber-dim)}.fc option{background:var(--bg2)}
+.fg{margin-bottom:10px}.fr2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.fr3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+.upload-z{border:1px dashed var(--bg5);padding:18px;text-align:center;cursor:pointer;background:var(--bg2);transition:all .15s;margin-bottom:10px;position:relative}
+.upload-z:hover{border-color:var(--amber-dim)}.upload-z input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.spin{display:inline-block;width:11px;height:11px;border:2px solid var(--bg5);border-top-color:var(--amber);border-radius:50%;animation:sp .7s linear infinite;vertical-align:middle;margin-right:6px}
+@keyframes sp{to{transform:rotate(360deg)}}
+.loading-row{display:none;padding:12px;background:var(--bg2);border:1px solid var(--border);margin-bottom:12px;font-size:10px;color:var(--text3);text-align:center}
+.parse-panel{display:none;border:1px solid var(--amber-dim);background:var(--bg2);margin-bottom:12px}
+.pp-head{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:var(--amber-pale);border-bottom:1px solid var(--amber-dim)}
+.pp-head h4{font-size:11px;font-weight:500;color:var(--amber2)}
+.pp-tag{font-size:9px;padding:1px 6px;background:var(--amber-dim);color:var(--amber);letter-spacing:.06em}
+.pp-grid{display:grid;grid-template-columns:1fr 1fr;padding:10px 12px;gap:0}
+.pf{padding:6px 0;border-bottom:1px solid var(--border)}
+.pfl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px}
+.pfv input{background:none;border:none;border-bottom:1px solid var(--bg5);color:var(--text);font-family:var(--mono);font-size:11px;outline:none;width:100%;padding:1px 0}
+.pfv input:focus{border-bottom-color:var(--amber)}
+.pf.unc .pfl::after{content:' ⚠';color:var(--amber)}.pf.unc .pfv input{border-bottom-color:var(--amber-dim)}
+.pp-actions{display:flex;gap:8px;padding:10px 12px;background:var(--bg3);border-top:1px solid var(--border)}
+.btn-ok{flex:1;padding:8px;background:var(--amber);color:var(--bg);font-family:var(--mono);font-size:11px;font-weight:600;border:none;cursor:pointer;letter-spacing:.06em}
+.btn-ok:hover{background:var(--amber2)}
+.btn-no{padding:8px 14px;background:none;border:1px solid var(--border);color:var(--text3);font-family:var(--mono);font-size:10px;cursor:pointer}
+.qbox{display:none;border:1px solid var(--border);border-left:3px solid var(--amber);background:var(--bg2);padding:14px;margin-bottom:12px}
+.q-big{display:flex;align-items:baseline;gap:8px;margin-bottom:2px}
+.q-price{font-size:30px;font-weight:600;color:var(--amber3);letter-spacing:-.02em}
+.q-unit{font-size:10px;color:var(--text3)}
+.q-context{font-size:10px;color:var(--text3);margin-bottom:10px;font-style:italic}
+.q-grid{display:grid;grid-template-columns:1fr auto;gap:4px 16px;font-size:11px}
+.ql{color:var(--text3)}.qv{color:var(--text2);text-align:right;font-variant-numeric:tabular-nums}
+.qv.hl{color:var(--amber2);font-size:13px;font-weight:500}
+.q-div{grid-column:1/-1;border-top:1px solid var(--border);margin:3px 0}
+.q-savings{background:var(--green-dim);padding:6px 10px;margin-top:10px;display:flex;justify-content:space-between;font-size:10px}
+.exec{width:100%;padding:10px;background:var(--amber);color:var(--bg);font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;border:none;cursor:pointer;display:none;transition:background .12s}
+.exec:hover{background:var(--amber2)}
+.succ{display:none;background:var(--amber-pale);border:1px solid var(--amber-dim);padding:12px 14px;margin-bottom:12px}
+.succ-t{font-size:12px;color:var(--amber2);font-weight:500;margin-bottom:2px}.succ-r{font-size:10px;color:var(--text3)}
+.rv{display:flex;align-items:center;margin:8px 0}
+.rv-nd{text-align:center;flex-shrink:0}
+.rv-dot{width:9px;height:9px;border-radius:50%;margin:0 auto 3px}
+.rv-dot.s{background:var(--amber)}.rv-dot.d{background:var(--cyan)}
+.rv-lbl{font-size:9px;color:var(--text3);text-transform:uppercase}
+.rv-nm{font-size:10px;color:var(--text);font-weight:500;margin-top:1px}
+.rv-line{flex:1;border-top:1px dashed var(--text4);margin:0 8px;margin-bottom:14px;position:relative}
+.rv-tag{position:absolute;top:-14px;left:50%;transform:translateX(-50%);font-size:9px;color:var(--amber);white-space:nowrap;background:var(--bg2);padding:0 3px}
+.mode-toggle{display:flex;gap:0;margin-bottom:10px}
+.tbtn{padding:5px 14px;font-size:10px;font-family:var(--mono);background:var(--bg3);border:1px solid var(--border);color:var(--text3);cursor:pointer;letter-spacing:.06em;transition:all .12s}
+.tbtn.active{background:var(--amber);color:var(--bg);border-color:var(--amber)}
+.tbtn:not(.active):hover{color:var(--text2);background:var(--bg4)}
+.mode-desc{font-size:10px;color:var(--text3);font-style:italic;margin-bottom:12px;padding:5px 8px;background:var(--bg2);border-left:2px solid var(--amber-dim)}
+.igt{width:100%;border-collapse:collapse;font-size:11px}
+.igt th{text-align:left;padding:5px 10px;border-bottom:1px solid var(--border);font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.07em;font-weight:400}
+.igt td{padding:7px 10px;border-bottom:1px solid var(--border);color:var(--text2);font-variant-numeric:tabular-nums}
+.igt tr:hover td{background:var(--bg3)}
+
+/* ── TRACKING TAB ── */
+.track-layout{display:grid;grid-template-columns:1fr 320px;height:calc(100vh - 66px);overflow:hidden}
+.map-wrap{position:relative;background:var(--bg);height:100%}
+#liveMap{width:100%;height:100%}
+.map-legend{position:absolute;bottom:14px;left:14px;z-index:999;background:var(--bg1);border:1px solid var(--border);padding:8px 12px;font-size:9px}
+.leg-row{display:flex;align-items:center;gap:6px;padding:2px 0;color:var(--text3)}
+.leg-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+.map-mode-bar{position:absolute;top:14px;left:14px;z-index:999;display:flex;gap:4px;flex-wrap:wrap}
+.mmode-btn{padding:4px 10px;font-size:9px;font-family:var(--mono);background:var(--bg1);border:1px solid var(--border);color:var(--text3);cursor:pointer;letter-spacing:.05em;text-transform:uppercase;transition:all .12s}
+.mmode-btn.active{background:var(--amber);color:var(--bg);border-color:var(--amber)}
+.mmode-btn:hover:not(.active){color:var(--text);background:var(--bg2)}
+.track-side{background:var(--bg1);overflow-y:auto;border-left:1px solid var(--border)}
+.tcard{background:var(--bg2);border:1px solid var(--border);margin:0 0 1px;padding:10px 12px;cursor:pointer;border-left:3px solid transparent;transition:all .12s}
+.tcard:hover{background:var(--bg3)}
+.tcard.active-card{background:var(--bg3);border-left-color:var(--amber)}
+.tcard.truck-c{border-left-color:var(--amber)}
+.tcard.pipe-c{border-left-color:var(--cyan)}
+.tcard.ship-c{border-left-color:#7b68ee}
+.tcard.rail-c{border-left-color:var(--green2)}
+.tcard.wh-c{border-left-color:var(--text3)}
+.tc-head{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:5px}
+.tc-ref{font-size:11px;font-weight:500;color:var(--text)}
+.tc-mode{font-size:9px;padding:1px 5px;letter-spacing:.05em}
+.tc-mode.truck{background:var(--amber-pale);color:var(--amber)}
+.tc-mode.pipe{background:var(--cyan-dim);color:var(--cyan)}
+.tc-mode.ship{background:rgba(123,104,238,.1);color:#7b68ee}
+.tc-mode.rail{background:var(--green-dim);color:var(--green2)}
+.tc-mode.wh{background:var(--bg4);color:var(--text3);border:1px solid var(--bg5)}
+.tc-route{font-size:10px;color:var(--text3);margin-bottom:4px}
+.tc-kpi{display:flex;gap:10px;font-size:10px}
+.tc-eta{color:var(--amber)}.tc-vol{color:var(--text2)}.tc-status{color:var(--green2)}
+.tc-progress{height:2px;background:var(--bg5);margin-top:6px;position:relative}
+.tc-prog-fill{height:100%;background:var(--amber);transition:width .5s}
+.tc-prog-fill.pipe{background:var(--cyan)}.tc-prog-fill.ship{background:#7b68ee}.tc-prog-fill.rail{background:var(--green2)}
+
+/* ETA accuracy panel */
+.eta-hero{display:grid;grid-template-columns:1fr 1fr 1fr;gap:0;border:1px solid var(--border);margin-bottom:1px}
+.eta-cell{padding:12px;text-align:center;border-right:1px solid var(--border)}
+.eta-cell:last-child{border-right:none}
+.eta-big{font-size:24px;font-weight:600;font-variant-numeric:tabular-nums}
+.eta-big.green{color:var(--green2)}.eta-big.amber{color:var(--amber)}
+.eta-lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-top:3px}
+.eta-sub{font-size:10px;color:var(--text2);margin-top:2px}
+
+/* On-time heatmap */
+.hm-grid{display:grid;grid-template-columns:repeat(26,1fr);gap:2px;margin-bottom:4px}
+.hm-cell{aspect-ratio:1;border-radius:1px;cursor:pointer;transition:opacity .12s}
+.hm-cell:hover{opacity:.7}
+.hm-cell.on{background:var(--green2)}.hm-cell.late{background:var(--amber)}.hm-cell.miss{background:var(--red2)}.hm-cell.empty{background:var(--bg4)}
+.hm-legend{display:flex;gap:10px;font-size:9px;color:var(--text3);margin-top:4px}
+.hm-leg-sq{width:9px;height:9px;border-radius:1px;display:inline-block;margin-right:3px;vertical-align:middle}
+.route-tab-bar{display:flex;gap:0;margin-bottom:8px;border-bottom:1px solid var(--border)}
+.rt-btn{padding:5px 10px;font-size:9px;font-family:var(--mono);background:none;border:none;color:var(--text3);cursor:pointer;border-bottom:2px solid transparent;letter-spacing:.05em;transition:all .12s;text-transform:uppercase}
+.rt-btn.active{color:var(--amber);border-bottom-color:var(--amber)}
+
+/* Nomination log */
+.nom-row{display:flex;justify-content:space-between;align-items:flex-start;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:10px}
+.nom-time{color:var(--text4);white-space:nowrap;flex-shrink:0;margin-right:10px}
+.nom-event{color:var(--text2);flex:1}
+.nom-status{font-size:9px;padding:1px 5px;flex-shrink:0;margin-left:6px}
+.nom-status.ok{background:var(--green-dim);color:var(--green2)}
+.nom-status.warn{background:var(--amber-pale);color:var(--amber)}
+.nom-status.pend{background:var(--bg4);color:var(--text3)}
+</style>
+<style>
+@keyframes darkBlink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="logo">GASROUTE <span>// BUYER TERMINAL</span></div>
+  <div style="flex:1;padding:0 20px"><div class="ticker" id="tickerEl"></div></div>
+  <div class="top-r">
+    <span><span class="pip"></span>LIVE</span>
+    <span id="clk">--:--:--</span>
+    <span style="color:var(--text2)">ARVIND-TX · MBR-0041</span>
+  </div>
+</div>
+
+<div class="nav">
+  <button class="nt active" onclick="st('orders',this)">MY ORDERS<span class="nbadge">3</span></button>
+  <button class="nt" onclick="st('new',this)">NEW ORDER</button>
+  <button class="nt" onclick="st('track',this)">LIVE TRACKING</button>
+</div>
+
+<!-- ══ ORDERS ══ -->
+<div class="shell active" id="tab-orders">
+<div class="layout">
+<div class="main">
+  <div class="sh" style="margin-bottom:10px">PORTFOLIO SNAPSHOT <span>logistics view · 3 active jobs</span></div>
+  <div class="savings-hero">
+    <div class="sh-cell"><div class="sh-val big amber">₹32</div><div class="sh-lbl">Avg Logistics Cost</div><div class="sh-sub">₹/MMBtu · all-in delivered</div></div>
+    <div class="sh-cell"><div class="sh-val amber">124,000</div><div class="sh-lbl">MMBtu In Motion</div><div class="sh-sub">3 active jobs</div></div>
+    <div class="sh-cell"><div class="sh-val green">Tomorrow 06:00</div><div class="sh-lbl">Next Delivery</div><div class="sh-sub">GR-2026-031 · Hazira→Ahmedabad</div></div>
+    <div class="sh-cell"><div class="sh-val cyan">0</div><div class="sh-lbl">Disruptions</div><div class="sh-sub">all routes clear</div></div>
+  </div>
+
+  <div class="sh">ACTIVE ORDERS <span>open multiple tabs simultaneously</span></div>
+
+  <!-- Order 1 -->
+  <div class="oc pip">
+    <div class="oc-head">
+      <div><div class="oc-ref">GR-2026-031</div><div class="oc-sub">Hazira LNG Terminal → Naroda Plant, Ahmedabad &nbsp;·&nbsp; Shell Energy India</div></div>
+      <span class="oc-badge flowing">FLOWING</span>
+    </div>
+    <div class="oc-kpis">
+      <div class="kp"><div class="kp-v a">Tomorrow 06:00</div><div class="kp-l">ETA Arrival</div></div>
+      <div class="kp"><div class="kp-v a">₹32/MMBtu</div><div class="kp-l">Logistics cost</div></div>
+      <div class="kp"><div class="kp-v g">2,000</div><div class="kp-l">MMBtu/day flowing</div></div>
+    </div>
+    <div class="oc-actions">
+      <button class="oc-btn amber" id="btn-util-0" onclick="openModal('util',0)">CONTRACT UTILISATION</button>
+      <button class="oc-btn" id="btn-meter-0" onclick="openModal('meter',0)">DELIVERY METER</button>
+      <button class="oc-btn" id="btn-supply-0" onclick="openModal('supply',0)">SUPPLY SECURITY</button>
+      <button class="oc-btn" id="btn-demand-0" onclick="openModal('demand',0)">DEMAND FORECAST</button>
+    </div>
+  </div>
+
+  <!-- Order 2 -->
+  <div class="oc trk">
+    <div class="oc-head">
+      <div><div class="oc-ref">GR-2026-024</div><div class="oc-sub">Dahej LNG Terminal → Naroda Plant, Ahmedabad &nbsp;·&nbsp; RLNG Markets Pvt. Ltd.</div></div>
+      <span class="oc-badge transit">IN TRANSIT</span>
+    </div>
+    <div class="oc-kpis">
+      <div class="kp"><div class="kp-v a">16 Apr 14:00</div><div class="kp-l">ETA Arrival</div></div>
+      <div class="kp"><div class="kp-v a">₹34/MMBtu</div><div class="kp-l">Logistics cost</div></div>
+      <div class="kp"><div class="kp-v w">—</div><div class="kp-l">Not yet flowing</div></div>
+    </div>
+    <div class="oc-actions">
+      <button class="oc-btn amber" id="btn-util-1" onclick="openModal('util',1)">CONTRACT UTILISATION</button>
+      <button class="oc-btn" id="btn-meter-1" onclick="openModal('meter',1)">DELIVERY METER</button>
+      <button class="oc-btn" id="btn-supply-1" onclick="openModal('supply',1)">SUPPLY SECURITY</button>
+      <button class="oc-btn" id="btn-demand-1" onclick="openModal('demand',1)">DEMAND FORECAST</button>
+    </div>
+  </div>
+
+  <!-- Order 3 -->
+  <div class="oc pen">
+    <div class="oc-head">
+      <div><div class="oc-ref">GR-2026-017</div><div class="oc-sub">Mhaskal Hub → Naroda Plant, Ahmedabad &nbsp;·&nbsp; GAIL (India) Ltd.</div></div>
+      <span class="oc-badge pending">SCHEDULED</span>
+    </div>
+    <div class="oc-kpis">
+      <div class="kp"><div class="kp-v a">22 Apr 2026</div><div class="kp-l">ETA Arrival</div></div>
+      <div class="kp"><div class="kp-v a">₹29/MMBtu</div><div class="kp-l">Logistics cost</div></div>
+      <div class="kp"><div class="kp-v w">—</div><div class="kp-l">Not yet flowing</div></div>
+    </div>
+    <div class="oc-actions">
+      <button class="oc-btn amber" id="btn-util-2" onclick="openModal('util',2)">CONTRACT UTILISATION</button>
+      <button class="oc-btn" id="btn-meter-2" onclick="openModal('meter',2)">DELIVERY METER</button>
+      <button class="oc-btn" id="btn-supply-2" onclick="openModal('supply',2)">SUPPLY SECURITY</button>
+      <button class="oc-btn" id="btn-demand-2" onclick="openModal('demand',2)">DEMAND FORECAST</button>
+    </div>
+  </div>
+</div>
+
+<div class="side">
+  <div class="sp">
+    <div class="sh">JOBS SUMMARY</div>
+    <div class="pos-grid">
+      <div class="pos-cell"><div class="pc-val a">₹32</div><div class="pc-lbl">Avg ₹/MMBtu</div></div>
+      <div class="pos-cell"><div class="pc-val" style="color:var(--cyan)">124,000</div><div class="pc-lbl">MMBtu In Motion</div></div>
+      <div class="pos-cell"><div class="pc-val g">3</div><div class="pc-lbl">Active Jobs</div></div>
+      <div class="pos-cell"><div class="pc-val" style="color:var(--text2)">0</div><div class="pc-lbl">Disruptions</div></div>
+    </div>
+    <div style="margin-top:8px">
+      <div class="dr"><span class="dl">Next arrival</span><span class="dv am">Tomorrow 06:00</span></div>
+      <div class="dr"><span class="dl">Gas in transit</span><span class="dv">86,000 MMBtu</span></div>
+      <div class="dr"><span class="dl">Active jobs</span><span class="dv">3</span></div>
+    </div>
+  </div>
+
+  <div class="sp">
+    <div class="sh">TRANSPORT CAPACITY <span>₹/MMBtu cost</span></div>
+    <div class="tree-cat">GASIFIED (PIPELINE)</div>
+    <div class="tree-item"><span class="ti-n">GGCL (Dahej–Ahm.)</span><span class="ti-s ok">HIGH</span><span class="ti-p">₹18</span></div>
+    <div class="ti-bar"><div class="ti-fill" style="width:38%"></div></div>
+    <div class="tree-item"><span class="ti-n">GAIL HVJ (Delhi)</span><span class="ti-s ok">AVAIL</span><span class="ti-p">₹22</span></div>
+    <div class="ti-bar"><div class="ti-fill" style="width:52%"></div></div>
+    <div class="tree-item"><span class="ti-n">DUPL/UUPL</span><span class="ti-s low">MOD</span><span class="ti-p">₹25</span></div>
+    <div class="ti-bar"><div class="ti-fill warn" style="width:71%"></div></div>
+    <div class="tree-item"><span class="ti-n">IGL Delhi city</span><span class="ti-s none">FULL</span><span class="ti-p">₹28</span></div>
+    <div class="ti-bar"><div class="ti-fill crit" style="width:95%"></div></div>
+    <div class="tree-cat" style="margin-top:6px">LIQUEFIED (SSLNG/ISO)</div>
+    <div class="tree-item"><span class="ti-n">SSLNG Truck (Hazira)</span><span class="ti-s ok">14 slots</span><span class="ti-p">₹32</span></div>
+    <div class="ti-bar"><div class="ti-fill" style="width:28%"></div></div>
+    <div class="tree-item"><span class="ti-n">SSLNG Truck (Dahej)</span><span class="ti-s ok">9 slots</span><span class="ti-p">₹34</span></div>
+    <div class="ti-bar"><div class="ti-fill" style="width:44%"></div></div>
+    <div class="tree-item"><span class="ti-n">ISO Container</span><span class="ti-s low">4 slots</span><span class="ti-p">₹41</span></div>
+    <div class="ti-bar"><div class="ti-fill warn" style="width:60%"></div></div>
+    <div class="tree-cat" style="margin-top:6px">STORAGE / BUFFER</div>
+    <div class="tree-item"><span class="ti-n">Dahej LNG tank</span><span class="ti-s ok">AVAIL</span><span class="ti-p">₹8/day</span></div>
+    <div class="ti-bar"><div class="ti-fill" style="width:35%"></div></div>
+    <div class="tree-item"><span class="ti-n">Hazira cryo store</span><span class="ti-s low">PARTIAL</span><span class="ti-p">₹9/day</span></div>
+    <div class="ti-bar"><div class="ti-fill warn" style="width:68%"></div></div>
+  </div>
+
+
+
+</div>
+</div>
+</div>
+
+<!-- ══ NEW ORDER ══ -->
+<div class="shell" id="tab-new">
+<div class="layout">
+<div class="main">
+  <div class="sh" style="margin-bottom:12px">NEW ORDER <span>OTC or IGX · logistics only</span></div>
+  <div class="fr2" style="margin-bottom:12px">
+    <div><div class="flabel">Transaction Mode</div><div class="mode-toggle"><button class="tbtn active" id="mOTC" onclick="setMode('otc')">OTC</button><button class="tbtn" id="mIGX" onclick="setMode('igx')">IGX</button></div></div>
+    <div><div class="flabel">Role</div><div class="mode-toggle"><button class="tbtn active" id="rBuy" onclick="setRole('buy')">BUYER</button><button class="tbtn" id="rSell" onclick="setRole('sell')">SELLER</button></div></div>
+  </div>
+  <div class="mode-desc" id="modeDesc">OTC mode — upload your supply contract. GasRoute arranges all physical logistics. You own the commodity.</div>
+  <div id="secOTC">
+    <div class="sh">Contract Upload</div>
+    <div class="upload-z"><input type="file" accept=".pdf,.docx,.txt" onchange="hFile(this.files[0])"><div style="font-size:11px;color:var(--text2);margin-bottom:3px" id="uzT">Drop Contract File Here</div><div style="font-size:10px;color:var(--text3)">PDF · DOCX · TXT &nbsp;·&nbsp; <strong style="color:var(--amber)">or click to browse</strong></div></div>
+    <div class="fg"><label class="flabel">Or paste contract text</label><textarea class="fc" id="cText" rows="4" style="resize:vertical" placeholder="This Gas Supply Agreement entered between Arvind Textiles Ltd. (Buyer) and Shell Energy India Pvt. Ltd. (Seller) for 8,000 MMBtu/day at Hazira, from 01 May 2026 to 31 May 2026 at ₹1,080/MMBtu..."></textarea></div>
+    <button style="padding:7px 18px;background:var(--amber);color:var(--bg);font-family:var(--mono);font-size:11px;font-weight:600;border:none;cursor:pointer;letter-spacing:.07em" onclick="analyse()">ANALYSE CONTRACT →</button>
+  </div>
+  <div id="secIGX" style="display:none">
+    <div class="sh">IGX Order Parameters</div>
+    <div class="fr2">
+      <div class="fg"><label class="flabel">Delivery Hub</label><select class="fc" id="igxHub" onchange="bldQ()"><option value="">— Select —</option><option value="Dahej">Dahej (W. Gujarat)</option><option value="Hazira">Hazira (W. Gujarat)</option><option value="Mhaskal">Mhaskal (Maharashtra)</option><option value="Ankot">Ankot (Gujarat)</option><option value="Suvali">Suvali (Gujarat)</option><option value="Bokaro">Bokaro (Jharkhand)</option></select></div>
+      <div class="fg"><label class="flabel">Contract Type</label><select class="fc" id="igxCT" onchange="bldQ()"><option>Daily</option><option>Weekly</option><option selected>Monthly</option><option>Fortnightly</option></select></div>
+    </div>
+    <div class="fr3">
+      <div class="fg"><label class="flabel">Volume (MMBtu)</label><input class="fc" type="number" id="igxV" value="8000" oninput="bldQ()"></div>
+      <div class="fg"><label class="flabel">From</label><input class="fc" type="date" id="igxF" onchange="bldQ()"></div>
+      <div class="fg"><label class="flabel">To</label><input class="fc" type="date" id="igxT" onchange="bldQ()"></div>
+    </div>
+    <div class="fg"><label class="flabel">Transport Preference</label><select class="fc" id="igxTr" onchange="bldQ()"><option>GasRoute optimal (lowest ₹/MMBtu)</option><option>Gasified — Pipeline only</option><option>Liquefied — SSLNG Truck</option><option>Liquefied — ISO Container</option></select></div>
+  </div>
+  <div class="fg" style="margin-top:12px"><div class="sh">Your Facility</div><div class="fr2"><div class="fg"><label class="flabel">Facility</label><input class="fc" value="Arvind Textiles — Naroda Plant, Ahmedabad"></div><div class="fg"><label class="flabel">Contact</label><input class="fc" value="Rajiv Mehta, Plant Manager"></div></div></div>
+  <div class="loading-row" id="ldRow"><span class="spin"></span>Parsing contract with GasRoute AI...</div>
+  <div class="parse-panel" id="ppanel">
+    <div class="pp-head"><h4>REVIEW EXTRACTED FIELDS</h4><span class="pp-tag">AI PARSED — CONFIRM ALL</span></div>
+    <div class="pp-grid" id="ppFields"></div>
+    <div style="padding:8px 12px;border-top:1px solid var(--border)"><div style="font-size:9px;color:var(--text3);margin-bottom:6px">⚠ Flagged = low confidence — verify</div><div id="rvHolder"></div></div>
+    <div class="pp-actions"><button class="btn-ok" onclick="confirmP()">CONFIRM & GENERATE QUOTE →</button><button class="btn-no" onclick="rejectP()">RE-UPLOAD</button></div>
+  </div>
+  <div class="qbox" id="qbox"></div>
+  <div class="succ" id="succBanner"></div>
+  <button class="exec" id="execBtn" onclick="execOrder()">EXECUTE LOGISTICS ORDER</button>
+</div>
+<div class="side">
+  <div class="sp">
+    <div class="sh">TRANSPORT CAPACITY <span>₹/MMBtu</span></div>
+    <div class="tree-cat">GASIFIED (PIPELINE)</div>
+    <div class="tree-item"><span class="ti-n">GGCL mainline</span><span class="ti-s ok">AVAIL</span><span class="ti-p">₹18</span></div>
+    <div class="tree-item"><span class="ti-n">GAIL HVJ</span><span class="ti-s ok">AVAIL</span><span class="ti-p">₹22</span></div>
+    <div class="tree-item"><span class="ti-n">DUPL/UUPL</span><span class="ti-s low">MOD</span><span class="ti-p">₹25</span></div>
+    <div class="tree-cat" style="margin-top:6px">LIQUEFIED (SSLNG)</div>
+    <div class="tree-item"><span class="ti-n">SSLNG Truck</span><span class="ti-s ok">14 slots</span><span class="ti-p">₹32</span></div>
+    <div class="tree-item"><span class="ti-n">ISO Container</span><span class="ti-s low">4 slots</span><span class="ti-p">₹41</span></div>
+  </div>
+</div>
+</div>
+</div>
+
+
+
+<!-- ══ MODALS — each is its own absolutely-positioned layer ══ -->
+<!-- util-0 -->
+<div class="modal-wrap" id="mw-util-0"><div class="modal" id="mb-util-0" style="width:660px;max-height:82vh"><div class="modal-bar" id="mbar-util-0"><div class="modal-title">CONTRACT UTILISATION — GR-2026-031</div><div class="modal-controls"><button class="modal-btn" onclick="resizeM('mb-util-0','sm')">▬</button><button class="modal-btn" onclick="resizeM('mb-util-0','lg')">⤢</button><button class="modal-btn close-btn" onclick="closeM('util-0')">✕</button></div></div><div class="modal-body" id="mbody-util-0"></div><div class="resize-handle" id="rh-util-0"></div></div></div>
+<!-- util-1 -->
+<div class="modal-wrap" id="mw-util-1"><div class="modal" id="mb-util-1" style="width:660px;max-height:82vh"><div class="modal-bar" id="mbar-util-1"><div class="modal-title">CONTRACT UTILISATION — GR-2026-024</div><div class="modal-controls"><button class="modal-btn" onclick="resizeM('mb-util-1','sm')">▬</button><button class="modal-btn" onclick="resizeM('mb-util-1','lg')">⤢</button><button class="modal-btn close-btn" onclick="closeM('util-1')">✕</button></div></div><div class="modal-body" id="mbody-util-1"></div><div class="resize-handle" id="rh-util-1"></div></div></div>
+<!-- util-2 -->
+<div class="modal-wrap" id="mw-util-2"><div class="modal" id="mb-util-2" style="width:660px;max-height:82vh"><div class="modal-bar" id="mbar-util-2"><div class="modal-title">CONTRACT UTILISATION — GR-2026-017</div><div class="modal-controls"><button class="modal-btn" onclick="resizeM('mb-util-2','sm')">▬</button><button class="modal-btn" onclick="resizeM('mb-util-2','lg')">⤢</button><button class="modal-btn close-btn" onclick="closeM('util-2')">✕</button></div></div><div class="modal-body" id="mbody-util-2"></div><div class="resize-handle" id="rh-util-2"></div></div></div>
+<!-- meter-0 -->
+<div class="modal-wrap" id="mw-meter-0"><div class="modal" id="mb-meter-0" style="width:620px;max-height:82vh"><div class="modal-bar" id="mbar-meter-0"><div class="modal-title">DELIVERY METER — GR-2026-031</div><div class="modal-controls"><button class="modal-btn" onclick="resizeM('mb-meter-0','sm')">▬</button><button class="modal-btn" onclick="resizeM('mb-meter-0','lg')">⤢</button><button class="modal-btn close-btn" onclick="closeM('meter-0')">✕</button></div></div><div class="modal-body" id="mbody-meter-0"></div><div class="resize-handle"></div></div></div>
+<!-- meter-1 -->
+<div class="modal-wrap" id="mw-meter-1"><div class="modal" id="mb-meter-1" style="width:620px;max-height:82vh"><div class="modal-bar" id="mbar-meter-1"><div class="modal-title">DELIVERY METER — GR-2026-024</div><div class="modal-controls"><button class="modal-btn" onclick="resizeM('mb-meter-1','sm')">▬</button><button class="modal-btn" onclick="resizeM('mb-meter-1','lg')">⤢</button><button class="modal-btn close-btn" onclick="closeM('meter-1')">✕</button></div></div><div class="modal-body" id="mbody-meter-1"></div><div class="resize-handle"></div></div></div>
+<!-- meter-2 -->
+<div class="modal-wrap" id="mw-meter-2"><div class="modal" id="mb-meter-2" style="width:620px;max-height:82vh"><div class="modal-bar" id="mbar-meter-2"><div class="modal-title">DELIVERY METER — GR-2026-017</div><div class="modal-controls"><button class="modal-btn" onclick="resizeM('mb-meter-2','sm')">▬</button><button class="modal-btn" onclick="resizeM('mb-meter-2','lg')">⤢</button><button class="modal-btn close-btn" onclick="closeM('meter-2')">✕</button></div></div><div class="modal-body" id="mbody-meter-2"></div><div class="resize-handle"></div></div></div>
+<!-- supply-0 -->
+<div class="modal-wrap" id="mw-supply-0"><div class="modal" id="mb-supply-0" style="width:640px;max-height:82vh"><div class="modal-bar" id="mbar-supply-0"><div class="modal-title">SUPPLY SECURITY — GR-2026-031</div><div class="modal-controls"><button class="modal-btn" onclick="resizeM('mb-supply-0','sm')">▬</button><button class="modal-btn" onclick="resizeM('mb-supply-0','lg')">⤢</button><button class="modal-btn close-btn" onclick="closeM('supply-0')">✕</button></div></div><div class="modal-body" id="mbody-supply-0"></div><div class="resize-handle"></div></div></div>
+<!-- supply-1 -->
+<div class="modal-wrap" id="mw-supply-1"><div class="modal" id="mb-supply-1" style="width:640px;max-height:82vh"><div class="modal-bar" id="mbar-supply-1"><div class="modal-title">SUPPLY SECURITY — GR-2026-024</div><div class="modal-controls"><button class="modal-btn" onclick="resizeM('mb-supply-1','sm')">▬</button><button class="modal-btn" onclick="resizeM('mb-supply-1','lg')">⤢</button><button class="modal-btn close-btn" onclick="closeM('supply-1')">✕</button></div></div><div class="modal-body" id="mbody-supply-1"></div><div class="resize-handle"></div></div></div>
+<!-- supply-2 -->
+<div class="modal-wrap" id="mw-supply-2"><div class="modal" id="mb-supply-2" style="width:640px;max-height:82vh"><div class="modal-bar" id="mbar-supply-2"><div class="modal-title">SUPPLY SECURITY — GR-2026-017</div><div class="modal-controls"><button class="modal-btn" onclick="resizeM('mb-supply-2','sm')">▬</button><button class="modal-btn" onclick="resizeM('mb-supply-2','lg')">⤢</button><button class="modal-btn close-btn" onclick="closeM('supply-2')">✕</button></div></div><div class="modal-body" id="mbody-supply-2"></div><div class="resize-handle"></div></div></div>
+<!-- demand-0 -->
+<div class="modal-wrap" id="mw-demand-0"><div class="modal" id="mb-demand-0" style="width:700px;max-height:82vh"><div class="modal-bar" id="mbar-demand-0"><div class="modal-title">DEMAND FORECAST — GR-2026-031</div><div class="modal-controls"><button class="modal-btn" onclick="resizeM('mb-demand-0','sm')">▬</button><button class="modal-btn" onclick="resizeM('mb-demand-0','lg')">⤢</button><button class="modal-btn close-btn" onclick="closeM('demand-0')">✕</button></div></div><div class="modal-body" id="mbody-demand-0"></div><div class="resize-handle"></div></div></div>
+<!-- demand-1 -->
+<div class="modal-wrap" id="mw-demand-1"><div class="modal" id="mb-demand-1" style="width:700px;max-height:82vh"><div class="modal-bar" id="mbar-demand-1"><div class="modal-title">DEMAND FORECAST — GR-2026-024</div><div class="modal-controls"><button class="modal-btn" onclick="resizeM('mb-demand-1','sm')">▬</button><button class="modal-btn" onclick="resizeM('mb-demand-1','lg')">⤢</button><button class="modal-btn close-btn" onclick="closeM('demand-1')">✕</button></div></div><div class="modal-body" id="mbody-demand-1"></div><div class="resize-handle"></div></div></div>
+<!-- demand-2 -->
+<div class="modal-wrap" id="mw-demand-2"><div class="modal" id="mb-demand-2" style="width:700px;max-height:82vh"><div class="modal-bar" id="mbar-demand-2"><div class="modal-title">DEMAND FORECAST — GR-2026-017</div><div class="modal-controls"><button class="modal-btn" onclick="resizeM('mb-demand-2','sm')">▬</button><button class="modal-btn" onclick="resizeM('mb-demand-2','lg')">⤢</button><button class="modal-btn close-btn" onclick="closeM('demand-2')">✕</button></div></div><div class="modal-body" id="mbody-demand-2"></div><div class="resize-handle"></div></div></div>
+
+
+<!-- ══ LIVE TRACKING ══ -->
+<div class="shell" id="tab-track">
+<div class="track-layout">
+
+<!-- LEFT: MAP -->
+<div class="map-wrap">
+  <div class="map-mode-bar">
+    <button class="mmode-btn active" onclick="filterMode('all',this)">ALL</button>
+    <button class="mmode-btn" onclick="filterMode('truck',this)">TRUCK</button>
+    <button class="mmode-btn" onclick="filterMode('pipe',this)">PIPELINE</button>
+    <button class="mmode-btn" onclick="filterMode('ship',this)">SHIP</button>
+    <button class="mmode-btn" onclick="filterMode('rail',this)">RAIL / ISO</button>
+    <button class="mmode-btn" onclick="filterMode('wh',this)">WAREHOUSE</button>
+  </div>
+  <div id="liveMap"></div>
+  <div class="map-legend">
+    <div class="leg-row"><div class="leg-dot" style="background:var(--amber)"></div>SSLNG Truck</div>
+    <div class="leg-row"><div class="leg-dot" style="background:var(--cyan)"></div>Pipeline</div>
+    <div class="leg-row"><div class="leg-dot" style="background:#7b68ee"></div>Ship / Coastal</div>
+    <div class="leg-row"><div class="leg-dot" style="background:var(--green2)"></div>Rail / ISO</div>
+    <div class="leg-row"><div class="leg-dot" style="background:var(--text3)"></div>Warehouse / Hub</div>
+  </div>
+</div>
+
+<!-- RIGHT: SIDE PANEL -->
+<div class="track-side">
+
+  <!-- ETA Accuracy Hero -->
+  <div class="sp" style="padding:0">
+    <div class="sh" style="padding:8px 12px 5px;margin:0">ETA ACCURACY <span>rolling 6 months</span></div>
+    <div class="eta-hero">
+      <div class="eta-cell"><div class="eta-big green">94%</div><div class="eta-lbl">On Time</div><div class="eta-sub">within 2hr window</div></div>
+      <div class="eta-cell"><div class="eta-big amber">4.2h</div><div class="eta-lbl">Avg Delay</div><div class="eta-sub">when late</div></div>
+      <div class="eta-cell"><div class="eta-big green">312</div><div class="eta-lbl">Deliveries</div><div class="eta-sub">last 6 months</div></div>
+    </div>
+  </div>
+
+  <!-- On-Time Heatmap -->
+  <div class="sp">
+    <div class="sh">ON-TIME HISTORY <span>Oct 2025 – Mar 2026</span></div>
+    <div class="route-tab-bar" id="routeTabBar">
+      <button class="rt-btn active" onclick="setHmRoute('all',this)">ALL ROUTES</button>
+      <button class="rt-btn" onclick="setHmRoute('hazira',this)">HAZIRA→AHM</button>
+      <button class="rt-btn" onclick="setHmRoute('dahej',this)">DAHEJ→AHM</button>
+      <button class="rt-btn" onclick="setHmRoute('mhaskal',this)">MHASKAL</button>
+    </div>
+    <div class="hm-grid" id="hmGrid"></div>
+    <div class="hm-legend">
+      <span><span class="hm-leg-sq" style="background:var(--green2)"></span>On time</span>
+      <span><span class="hm-leg-sq" style="background:var(--amber)"></span>≤4hr late</span>
+      <span><span class="hm-leg-sq" style="background:var(--red2)"></span>&gt;4hr late</span>
+      <span><span class="hm-leg-sq" style="background:var(--bg4)"></span>No delivery</span>
+    </div>
+  </div>
+
+  <!-- Active Shipments -->
+  <div class="sp" style="padding:8px 12px 5px">
+    <div class="sh" style="margin-bottom:8px">ACTIVE SHIPMENTS <span id="shipCount">5 in motion</span></div>
+  </div>
+  <div id="shipmentCards"></div>
+
+  <!-- Nomination Log -->
+  <div class="sp">
+    <div class="sh">NOMINATION LOG <span>GGCL / GAIL filings</span></div>
+    <div id="nomLog"></div>
+  </div>
+
+</div>
+</div>
+</div>
+
+<script>
+// ─── NUMBER FORMATTING ────────────────────────────────────────
+// Always use standard international grouping (1,000,000 not 1,00,000)
+function fmt(n){
+  const v=Math.round(Number(n));
+  return v.toLocaleString('en-US'); // en-US gives 1,000,000 grouping
+}
+function fmtR(n){return '₹'+fmt(n);}
+function fmtD(n){return '$'+Math.abs(n).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});}
+
+// ─── CLOCK ────────────────────────────────────────────────────
+setInterval(()=>{document.getElementById('clk').textContent=new Date().toTimeString().slice(0,8);},1000);
+
+// ─── TABS ─────────────────────────────────────────────────────
+function st(id,btn){
+  document.querySelectorAll('.shell').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.nt').forEach(t=>t.classList.remove('active'));
+  document.getElementById('tab-'+id).classList.add('active');
+  btn.classList.add('active');
+
+}
+
+// ─── MARKET FEED ─────────────────────────────────────────────
+let mktPrice=1148;
+const IGX_HUBS=[
+  {h:'Dahej',p:1092,c:+1.2},{h:'Hazira',p:1148,c:-.4},
+  {h:'Mhaskal',p:1187,c:+2.1},{h:'Ankot',p:1210,c:+.8},
+  {h:'Suvali',p:1044,c:-1.1},{h:'Bokaro',p:910,c:+.3},
+];
+function updateMarket(){
+  const snap=document.getElementById('igxSnap2');
+  if(snap) snap.innerHTML=IGX_HUBS.map(f=>`<div class="igx-row"><span class="igx-hub">${f.h}</span><span class="igx-price">${fmtR(f.p)}</span></div>`).join('');
+}
+updateMarket();
+document.getElementById('tickerEl').innerHTML=[
+  {l:'GR-2026-031',v:'FLOWING · Hazira→Ahmedabad',c:'up'},
+  {l:'GR-2026-024',v:'IN TRANSIT · Dahej→Ahmedabad',c:''},
+  {l:'GR-2026-017',v:'SCHEDULED · Mhaskal→Ahmedabad',c:''},
+  {l:'SSLNG SLOTS',v:'14 avail · Hazira',c:'up'},
+  {l:'PIPELINE',v:'GGCL clear · no OFO',c:'up'},
+].map(t=>`<span class="tick"><span class="th">${t.l}</span><span class="tp">${t.v}</span></span>`).join('');
+
+// ─── MODAL SYSTEM ─────────────────────────────────────────────
+// Each modal gets its own z-index layer; multiple can be open at once
+let topZ=300;
+const openModals=new Set();
+// Stagger initial positions so they don't all pile on top of each other
+const OFFSETS={
+  'util-0':{x:60,y:60},'util-1':{x:80,y:80},'util-2':{x:100,y:100},
+  'meter-0':{x:120,y:50},'meter-1':{x:140,y:70},'meter-2':{x:160,y:90},
+  'supply-0':{x:70,y:110},'supply-1':{x:90,y:130},'supply-2':{x:110,y:150},
+  'demand-0':{x:50,y:80},'demand-1':{x:70,y:100},'demand-2':{x:90,y:120},
+};
+
+function openModal(type,idx){
+  const key=type+'-'+idx;
+  const wrap=document.getElementById('mw-'+key);
+  const box=document.getElementById('mb-'+key);
+  if(!wrap||!box) return;
+
+  // If already open, just bring to front
+  if(openModals.has(key)){
+    topZ++;
+    wrap.style.zIndex=topZ;
+    return;
+  }
+
+  // Populate content
+  const body=document.getElementById('mbody-'+key);
+  if(type==='util') body.innerHTML=buildUtil(idx);
+  if(type==='meter'){body.innerHTML=buildMeter(idx);startMeterAnim(key,idx);}
+  if(type==='supply') body.innerHTML=buildSupply(idx);
+  if(type==='demand') body.innerHTML=buildDemand(idx);
+
+  // Position with offset
+  const off=OFFSETS[key]||{x:60,y:60};
+  topZ++;
+  wrap.style.cssText=`display:block;pointer-events:auto;position:fixed;left:${off.x}px;top:${off.y}px;z-index:${topZ};`;
+
+  openModals.add(key);
+  makeDraggable(key);
+  makeResizable(key);
+
+  // Mark button as active
+  const btn=document.getElementById('btn-'+key);
+  if(btn) btn.classList.add('active-modal');
+}
+
+function closeM(key){
+  const wrap=document.getElementById('mw-'+key);
+  if(wrap){wrap.style.display='none';}
+  openModals.delete(key);
+  const btn=document.getElementById('btn-'+key);
+  if(btn) btn.classList.remove('active-modal');
+  // Stop meter animation
+  if(meterIntervals[key]){clearInterval(meterIntervals[key]);delete meterIntervals[key];}
+}
+
+function resizeM(boxId,sz){
+  const m=document.getElementById(boxId);
+  if(!m) return;
+  if(sz==='lg'){m.style.width='88vw';m.style.maxHeight='88vh';}
+  else{m.style.width='';m.style.maxHeight='82vh';}
+}
+
+// Bring modal to front on click
+document.querySelectorAll('.modal-wrap').forEach(w=>{
+  w.addEventListener('mousedown',()=>{topZ++;w.style.zIndex=topZ;});
+});
+
+// Draggable
+function makeDraggable(key){
+  const wrap=document.getElementById('mw-'+key);
+  const bar=document.getElementById('mbar-'+key);
+  if(!bar||!wrap) return;
+  let ox=0,oy=0,startX=0,startY=0,dragging=false;
+  bar.addEventListener('mousedown',e=>{
+    if(e.target.tagName==='BUTTON') return;
+    dragging=true;
+    const rect=wrap.getBoundingClientRect();
+    startX=rect.left; startY=rect.top;
+    ox=e.clientX; oy=e.clientY;
+    topZ++; wrap.style.zIndex=topZ;
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove',e=>{
+    if(!dragging) return;
+    const dx=e.clientX-ox; const dy=e.clientY-oy;
+    wrap.style.left=(startX+dx)+'px';
+    wrap.style.top=(startY+dy)+'px';
+  });
+  document.addEventListener('mouseup',()=>{dragging=false;});
+}
+
+// Resizable
+function makeResizable(key){
+  const rh=document.getElementById('rh-'+key);
+  const box=document.getElementById('mb-'+key);
+  if(!rh||!box) return;
+  let resizing=false,ox=0,oy=0,sw=0,sh=0;
+  rh.addEventListener('mousedown',e=>{
+    resizing=true; ox=e.clientX; oy=e.clientY;
+    sw=box.offsetWidth; sh=box.offsetHeight;
+    e.preventDefault(); e.stopPropagation();
+  });
+  document.addEventListener('mousemove',e=>{
+    if(!resizing) return;
+    box.style.width=Math.max(400,sw+(e.clientX-ox))+'px';
+    box.style.maxHeight=Math.max(300,sh+(e.clientY-oy))+'px';
+  });
+  document.addEventListener('mouseup',()=>{resizing=false;});
+}
+
+// ─── CONTRACT UTILISATION ─────────────────────────────────────
+const CONTRACTS=[
+  {tot:62000,taken:42160,top:90,swing:10,price:1984000,period:'01 Apr–30 Apr 2026',days:30,elapsed:20},
+  {tot:24000,taken:9600,top:90,swing:10,price:816000,period:'10 Apr–16 Apr 2026',days:7,elapsed:4},
+  {tot:38000,taken:0,top:90,swing:10,price:1102000,period:'22 Apr–22 May 2026',days:30,elapsed:0},
+];
+function buildUtil(idx){
+  const c=CONTRACTS[idx];
+  const pct=((c.taken/c.tot)*100).toFixed(1);
+  const base=c.tot/c.days;
+  const minFloor=Math.round(base*(1-c.swing/100));
+  const maxDay=Math.round(base*(1+c.swing/100));
+  const remaining=c.days-c.elapsed;
+  const needed=Math.max(0,c.tot*(c.top/100)-c.taken);
+  const perDay=remaining>0?(needed/remaining).toFixed(0):0;
+  const barColor=parseFloat(pct)>=c.top?'var(--green)':'var(--amber)';
+  const calDays=[...Array(c.days)].map((_,i)=>{
+    const past=i<c.elapsed;
+    const vol=past?Math.round(base*(0.9+Math.random()*.2)):Math.round(base);
+    return{day:i+1,vol,past,today:i===c.elapsed};
+  });
+  return `
+    <div class="util-header">
+      <div class="util-cell"><div class="uc-val a">${fmt(c.tot)}</div><div class="uc-lbl">Contract Volume (MMBtu)</div></div>
+      <div class="util-cell"><div class="uc-val g">${fmt(c.taken)}</div><div class="uc-lbl">Taken to Date</div></div>
+      <div class="util-cell"><div class="uc-val ${needed>0?'a':'g'}">${fmt(needed)}</div><div class="uc-lbl">Still to Take</div></div>
+      <div class="util-cell"><div class="uc-val" style="color:var(--cyan)">${fmt(perDay)}</div><div class="uc-lbl">MMBtu/day Required</div></div>
+    </div>
+    <div style="margin-bottom:14px">
+      <div style="font-size:9px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.06em">Utilisation — ${pct}% · take-or-pay floor at ${c.top}%</div>
+      <div class="util-bar-track">
+        <div class="util-bar-fill" style="width:${pct}%;background:${barColor}" data-pct="${pct}%"></div>
+        <div class="util-tap-line" style="left:${c.top}%"></div>
+      </div>
+      <div class="util-bar-labels"><span>0</span><span style="margin-left:${c.top-2}%">T-o-P ${c.top}%</span><span>${fmt(c.tot)} MMBtu</span></div>
+    </div>
+    <div class="swing-row">
+      <div class="swing-cell"><div class="sw-v">${c.swing}%</div><div class="sw-l">Swing Allowance</div></div>
+      <div class="swing-cell"><div class="sw-v">${fmt(minFloor)}</div><div class="sw-l">Min Daily (MMBtu)</div></div>
+      <div class="swing-cell"><div class="sw-v">${fmt(maxDay)}</div><div class="sw-l">Max Daily (MMBtu)</div></div>
+      <div class="swing-cell"><div class="sw-v">${c.elapsed}/${c.days}</div><div class="sw-l">Days Elapsed</div></div>
+    </div>
+    <div style="background:var(--bg3);border:1px solid var(--border);padding:8px 12px;margin-bottom:12px;display:flex;justify-content:space-between;font-size:10px">
+      <span style="color:var(--text3)">GasRoute logistics fee</span>
+      <span style="color:var(--amber);font-weight:600">${fmtR(c.price)} total · ₹${fmt(Math.round(c.price/c.tot))}/MMBtu</span>
+    </div>
+    <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Daily delivery calendar — future days editable</div>
+    <div class="cal-hdr">${['Mo','Tu','We','Th','Fr','Sa','Su'].map(d=>`<span>${d}</span>`).join('')}</div>
+    <div class="cal-grid">
+      ${calDays.map(d=>{
+        const ov=d.vol>maxDay; const un=d.vol<minFloor;
+        return`<div class="cal-cell ${d.past?'past':''} ${d.today?'today':''} ${d.past&&ov?'over':''} ${d.past&&un?'under':''}" onclick="editDay(${d.day},${idx})">
+          <div class="cal-day">${d.day}</div>
+          <div class="cal-vol ${d.past&&ov?'over':d.past&&un?'under':'exact'}">${fmt(d.vol)}</div>
+          ${!d.past?'<div class="cal-edit"></div>':''}
+        </div>`;}).join('')}
+    </div>
+    <div style="font-size:9px;color:var(--text4);margin-top:6px">Orange dot = editable future day · Green bg = above base · Red bg = below floor</div>`;
+}
+function editDay(day,idx){
+  const c=CONTRACTS[idx];
+  const base=Math.round(c.tot/c.days);
+  const min=Math.round(base*(1-c.swing/100));
+  const max=Math.round(base*(1+c.swing/100));
+  const val=prompt(`Day ${day} nomination override (MMBtu)\nBase: ${fmt(base)} · Range: ${fmt(min)}–${fmt(max)}`,base);
+  if(val!==null&&!isNaN(parseInt(val))) alert(`Day ${day} overridden to ${fmt(parseInt(val))} MMBtu — GasRoute will adjust capacity booking.`);
+}
+
+// ─── DELIVERY METER ──────────────────────────────────────────
+const METER_DATA=[
+  {rate:2000,status:'flowing',today:38400,expected:40000,month:42160,nominated:42000,bog:320,commissioned:'12 Mar 2026',pressure:'38.2 bar',temp:'-161°C',meterId:'IGX-DH-0441'},
+  {rate:0,status:'transit',today:0,expected:24000,month:0,nominated:24000,bog:180,commissioned:'—',pressure:'—',temp:'—',meterId:'IGX-DH-0392'},
+  {rate:0,status:'pending',today:0,expected:38000,month:0,nominated:38000,bog:0,commissioned:'—',pressure:'—',temp:'—',meterId:'—'},
+];
+const meterIntervals={};
+function buildMeter(idx){
+  const m=METER_DATA[idx];
+  const pct=m.expected>0?((m.today/m.expected)*100).toFixed(1):'0.0';
+  const hours=[...Array(24)].map((_,i)=>({h:i,v:m.status==='flowing'?Math.round(1800+Math.random()*400):0}));
+  const maxH=Math.max(...hours.map(h=>h.v),1);
+  return `
+    ${m.commissioned!=='—'?`<div style="background:var(--green-dim);border:1px solid rgba(80,196,104,.15);padding:7px 12px;margin-bottom:12px;font-size:10px;color:var(--green2);display:flex;justify-content:space-between"><span>METER COMMISSIONED · ${m.meterId}</span><span>${m.commissioned}</span></div>`:''}
+    <div class="meter-hero">
+      <div class="meter-gauge">
+        <svg viewBox="0 0 100 100" width="90" height="90">
+          <circle cx="50" cy="50" r="42" fill="none" stroke="#1e1c19" stroke-width="10"/>
+          <circle cx="50" cy="50" r="42" fill="none" stroke="${m.status==='flowing'?'#50c468':m.status==='transit'?'#f5aa18':'#483e34'}" stroke-width="10"
+            stroke-dasharray="${(2*Math.PI*42).toFixed(2)}" stroke-dashoffset="${(2*Math.PI*42*(1-parseFloat(pct)/100)).toFixed(2)}"
+            stroke-linecap="round" transform="rotate(-90 50 50)"/>
+          <text x="50" y="47" text-anchor="middle" fill="#e8dcc8" font-family="IBM Plex Mono" font-size="14" font-weight="600">${pct}%</text>
+          <text x="50" y="60" text-anchor="middle" fill="#706050" font-family="IBM Plex Mono" font-size="8">delivered</text>
+        </svg>
+      </div>
+      <div style="flex:1">
+        <div class="mi-rate" id="lr-${idx}">${fmt(m.rate)}</div>
+        <div class="mi-unit">MMBtu/hour current flow rate</div>
+        <div class="mi-status" style="margin-top:4px">
+          <div class="status-pip ${m.status}"></div>
+          <span style="font-size:10px;color:${m.status==='flowing'?'var(--green2)':m.status==='transit'?'var(--amber)':'var(--text3)'}">
+            ${m.status==='flowing'?'FLOWING — Pipeline active':m.status==='transit'?'IN TRANSIT — Truck en route':'SCHEDULED — Not yet dispatched'}
+          </span>
+        </div>
+      </div>
+    </div>
+    <div class="meter-stats">
+      <div class="ms-cell"><div class="ms-v" style="color:${m.status==='flowing'?'var(--green2)':'var(--text3)'}">${fmt(m.today)}</div><div class="ms-l">MMBtu Today</div></div>
+      <div class="ms-cell"><div class="ms-v" style="color:var(--amber)">${fmt(m.expected)}</div><div class="ms-l">Expected This Period</div></div>
+      <div class="ms-cell"><div class="ms-v" style="color:var(--red2)">${fmt(m.bog)} <span style="font-size:9px">(-${m.expected>0?((m.bog/m.expected)*100).toFixed(2):'0.00'}%)</span></div><div class="ms-l">BOG Shrinkage (GR absorbs)</div></div>
+    </div>
+    <div style="margin-bottom:12px">
+      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Hourly flow — last 24h (MMBtu/h)</div>
+      <div class="mt-bars" id="mb-bars-${idx}">
+        ${hours.map((h,i)=>`<div class="mt-bar ${i>=20?'active':''}" style="height:${(h.v/maxH*100).toFixed(0)}%" data-v="${fmt(h.v)} MMBtu/h @ ${h.h}:00"></div>`).join('')}
+      </div>
+      <div class="mt-labels"><span>00:00</span><span>06:00</span><span>12:00</span><span>18:00</span><span>Now</span></div>
+    </div>
+    <div style="margin-bottom:12px">
+      <div class="sh">METER DETAILS</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0">
+        <div class="dr"><span class="dl">Meter ID</span><span class="dv am">${m.meterId}</span></div>
+        <div class="dr"><span class="dl">Commissioned</span><span class="dv">${m.commissioned}</span></div>
+        <div class="dr"><span class="dl">Pipeline pressure</span><span class="dv">${m.pressure}</span></div>
+        <div class="dr"><span class="dl">LNG temperature</span><span class="dv">${m.temp}</span></div>
+        <div class="dr"><span class="dl">Nominated</span><span class="dv">${fmt(m.nominated)} MMBtu</span></div>
+        <div class="dr"><span class="dl">Nomination status</span><span class="dv g">CONFIRMED</span></div>
+      </div>
+    </div>
+    <div>
+      <div class="sh">EVENT LOG</div>
+      ${m.status==='flowing'?`
+        <div class="ml-row"><span class="ml-time">Today 06:00</span><span class="ml-event">Pipeline flow commenced</span><span class="ml-vol">—</span></div>
+        <div class="ml-row"><span class="ml-time">Today 04:30</span><span class="ml-event">Nomination confirmed by GGCL</span><span class="ml-vol">${fmt(m.nominated)} MMBtu</span></div>
+        <div class="ml-row"><span class="ml-time">Yesterday 18:00</span><span class="ml-event">Day-ahead nomination submitted</span><span class="ml-vol">${fmt(m.nominated)} MMBtu</span></div>
+      `:`<div class="ml-row"><span class="ml-time">Pending</span><span class="ml-event">No flow events yet</span><span class="ml-vol">—</span></div>`}
+    </div>
+    <div style="margin-top:12px;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);font-size:10px;color:var(--text3)">
+      ⚙ <strong style="color:var(--amber)">Meter Commissioning Service</strong> — GasRoute commissions, tests, and certifies your delivery meter. Includes SCADA integration and monthly audit. Contact account manager.
+    </div>`;
+}
+function startMeterAnim(key,idx){
+  if(meterIntervals[key]) clearInterval(meterIntervals[key]);
+  if(METER_DATA[idx].status!=='flowing') return;
+  meterIntervals[key]=setInterval(()=>{
+    const el=document.getElementById('lr-'+idx);
+    if(el) el.textContent=fmt(1900+Math.round(Math.random()*200));
+    const bars=document.querySelectorAll(`#mb-bars-${idx} .mt-bar.active`);
+    bars.forEach(b=>{
+      const cur=parseFloat(b.style.height)||50;
+      b.style.height=Math.max(5,Math.min(100,cur+(Math.random()-.48)*8))+'%';
+    });
+  },1800);
+}
+
+// ─── SUPPLY SECURITY ─────────────────────────────────────────
+const DELIVERIES=[
+  {ref:'GR-2026-031',eta:'Tomorrow 06:00',days:.5,mode:'Pipeline',status:'secure',nom:'CONFIRMED',pipe:'GGCL mainline — no constraints',truck:'SSLNG truck pre-booked (backup)',storage:'Dahej buffer available',ofo:'No OFO active',monsoon:'Low — May delivery',vol:62000},
+  {ref:'GR-2026-024',eta:'16 Apr 14:00',days:2,mode:'SSLNG Truck',status:'partial',nom:'CONFIRMED',pipe:'N/A — truck route',truck:'3 tankers dispatched from Dahej',storage:'Hazira ISO buffer in use',ofo:'N/A',monsoon:'No risk',vol:24000},
+  {ref:'GR-2026-017',eta:'22 Apr 2026',days:8,mode:'Pipeline',status:'secure',nom:'PENDING',pipe:'DUPL mainline — moderate capacity',truck:'Backup booking in progress',storage:'Mhaskal storage available',ofo:'No OFO forecast',monsoon:'Low — Apr delivery',vol:38000},
+];
+const supplyFilters={};
+function buildSupply(idx){
+  const k='sf-'+idx;
+  if(!supplyFilters[k]) supplyFilters[k]='all';
+  return`
+    <div class="filter-bar">
+      <span class="filter-lbl">ETA Filter:</span>
+      <button class="filter-btn ${supplyFilters[k]==='all'?'active':''}" onclick="filterSup('all','sf-${idx}',${idx})">ALL</button>
+      <button class="filter-btn ${supplyFilters[k]==='1d'?'active':''}" onclick="filterSup('1d','sf-${idx}',${idx})">≤ 1 Day</button>
+      <button class="filter-btn ${supplyFilters[k]==='3d'?'active':''}" onclick="filterSup('3d','sf-${idx}',${idx})">≤ 3 Days</button>
+      <button class="filter-btn ${supplyFilters[k]==='7d'?'active':''}" onclick="filterSup('7d','sf-${idx}',${idx})">≤ 7 Days</button>
+      <button class="filter-btn ${supplyFilters[k]==='custom'?'active':''}" onclick="filterSup('custom','sf-${idx}',${idx})">CUSTOM</button>
+      <input class="filter-range" type="number" id="${k}-days" placeholder="days" min="1" oninput="filterSup('custom','sf-${idx}',${idx})">
+    </div>
+    <div id="scards-${idx}">${buildSupplyCards(DELIVERIES,supplyFilters[k],k)}</div>`;
+}
+function filterSup(f,filterKey,idx){
+  supplyFilters[filterKey]=f;
+  document.querySelectorAll(`#mbody-supply-${idx} .filter-btn`).forEach(b=>b.classList.remove('active'));
+  const clickedBtn=document.querySelector(`#mbody-supply-${idx} .filter-btn[onclick*="'${f}'"]`);
+  if(clickedBtn) clickedBtn.classList.add('active');
+  const customDays=parseFloat(document.getElementById(filterKey+'-days')?.value)||999;
+  const max=f==='1d'?1:f==='3d'?3:f==='7d'?7:f==='custom'?customDays:999;
+  const el=document.getElementById('scards-'+idx);
+  if(el) el.innerHTML=buildSupplyCards(DELIVERIES,f,filterKey,max);
+}
+function buildSupplyCards(deliveries,filter,fk,maxD){
+  const max=maxD||(filter==='1d'?1:filter==='3d'?3:filter==='7d'?7:999);
+  const filtered=deliveries.filter(d=>d.days<=max);
+  if(!filtered.length) return`<div style="color:var(--text3);font-size:11px;padding:12px">No deliveries within this window.</div>`;
+  return filtered.map(d=>{
+    const resilPct=d.status==='secure'?85:d.status==='partial'?55:30;
+    const resilColor=d.status==='secure'?'var(--green)':d.status==='partial'?'var(--amber)':'var(--red)';
+    return`<div class="supply-card ${d.status}">
+      <div class="sc-head">
+        <div><div class="sc-ref">${d.ref}</div><div class="sc-eta">${d.mode} · ${d.eta}</div></div>
+        <span class="sc-badge ${d.status}">${d.status==='secure'?'FULLY SECURED':d.status==='partial'?'PARTIAL BACKUP':'AT RISK'}</span>
+      </div>
+      <div class="sc-grid">
+        <div class="sc-row"><span>Volume</span><span>${fmt(d.vol)} MMBtu</span></div>
+        <div class="sc-row"><span>Nomination</span><span style="color:${d.nom==='CONFIRMED'?'var(--green2)':'var(--amber)'}">${d.nom}</span></div>
+        <div class="sc-row"><span>Pipeline status</span><span>${d.pipe}</span></div>
+        <div class="sc-row"><span>OFO alert</span><span style="color:${d.ofo.includes('No')?'var(--green2)':'var(--red2)'}">${d.ofo}</span></div>
+        <div class="sc-row"><span>Storage buffer</span><span>${d.storage}</span></div>
+        <div class="sc-row"><span>Monsoon risk</span><span>${d.monsoon}</span></div>
+      </div>
+      <div class="sc-src-title">Supply source resilience</div>
+      <div class="sc-src-row"><div class="src-dot ${d.status==='secure'?'ok':'warn'}"></div><span class="src-name">Primary — ${d.mode}</span><span class="src-status">${d.nom}</span></div>
+      <div class="sc-src-row"><div class="src-dot ${d.status==='partial'?'warn':'ok'}"></div><span class="src-name">Backup — ${d.mode==='Pipeline'?'SSLNG Truck':'Pipeline reroute'}</span><span class="src-status">${d.status==='partial'?'BOOKING IN PROGRESS':'PRE-BOOKED'}</span></div>
+      <div class="sc-src-row"><div class="src-dot ok"></div><span class="src-name">Buffer storage</span><span class="src-status">AVAILABLE</span></div>
+      <div style="margin-top:8px">
+        <div style="font-size:9px;color:var(--text3);margin-bottom:3px">Resilience score</div>
+        <div class="resil-bar"><div class="resil-fill" style="width:${resilPct}%;background:${resilColor}"></div></div>
+        <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text4)"><span>0%</span><span style="color:${resilColor}">${resilPct}%</span><span>100%</span></div>
+      </div>
+    </div>`;}).join('');
+}
+
+// ─── DEMAND FORECAST ─────────────────────────────────────────
+const DF_ORDERS=[{base:8000,swing:10,period:'Apr 2026',days:30},{base:3000,swing:15,period:'Apr 2026',days:7},{base:1200,swing:10,period:'Apr–May 2026',days:30}];
+const dfOverrides={};
+function buildDemand(idx){
+  const o=DF_ORDERS[idx];
+  const days=[...Array(o.days)].map((_,i)=>({day:i+1,vol:dfOverrides[idx+'_'+i]||o.base,override:!!dfOverrides[idx+'_'+i]}));
+  const maxV=o.base*(1+o.swing/100);
+  const totalNom=days.reduce((a,d)=>a+d.vol,0);
+  return`
+    <div style="font-size:10px;color:var(--text3);font-style:italic;margin-bottom:12px;padding:5px 8px;background:var(--bg2);border-left:2px solid var(--amber-dim)">
+      Logistics planning only — not commodity exposure. GasRoute pre-books capacity based on your forecast.
+    </div>
+    <div class="df-controls">
+      <div class="df-cell"><div class="df-label">Base Daily (MMBtu)</div><input class="df-input" type="number" id="dfb-${idx}" value="${o.base}" oninput="updateDF(${idx})"></div>
+      <div class="df-cell"><div class="df-label">Swing (%)</div><input class="df-input" type="number" id="dfs-${idx}" value="${o.swing}" min="0" max="50" oninput="updateDF(${idx})"></div>
+      <div class="df-cell"><div class="df-label">Period</div><input class="df-input" type="text" value="${o.period}" readonly style="opacity:.6"></div>
+    </div>
+    <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.06em;margin-bottom:4px">Daily profile — click bar to override</div>
+    <div class="df-chart" id="dfc-${idx}">
+      ${days.map((d,i)=>`<div class="dfc-bar ${d.override?'override':''}" style="height:${Math.max(3,(d.vol/maxV*100)).toFixed(0)}%" title="Day ${d.day}: ${fmt(d.vol)} MMBtu" onclick="overrideDF(${idx},${i})"></div>`).join('')}
+    </div>
+    <div class="dfc-labels"><span>Day 1</span><span>Day ${Math.round(o.days/3)}</span><span>Day ${Math.round(2*o.days/3)}</span><span>Day ${o.days}</span></div>
+    <div class="df-summary">
+      <div class="dfs-cell"><div class="dfs-v">${fmt(totalNom)}</div><div class="dfs-l">Total Nominated (MMBtu)</div></div>
+      <div class="dfs-cell"><div class="dfs-v">${fmt(Math.round(totalNom*0.9))}</div><div class="dfs-l">Take-or-Pay Floor</div></div>
+      <div class="dfs-cell"><div class="dfs-v">${fmt(Math.round(maxV))}</div><div class="dfs-l">Max Daily (MMBtu)</div></div>
+      <div class="dfs-cell"><div class="dfs-v">${o.days}</div><div class="dfs-l">Days in Period</div></div>
+    </div>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      <button style="flex:1;padding:8px;background:var(--amber);color:var(--bg);font-family:var(--mono);font-size:11px;font-weight:600;border:none;cursor:pointer" onclick="alert('Forecast submitted — GasRoute will pre-book capacity for your nominated volumes.')">SUBMIT FORECAST →</button>
+      <button style="padding:8px 12px;background:none;border:1px solid var(--border);color:var(--text3);font-family:var(--mono);font-size:10px;cursor:pointer" onclick="resetDF(${idx})">RESET</button>
+    </div>`;
+}
+function overrideDF(idx,i){
+  const base=parseInt(document.getElementById('dfb-'+idx)?.value)||8000;
+  const swing=parseInt(document.getElementById('dfs-'+idx)?.value)||10;
+  const min=Math.round(base*(1-swing/100)); const max=Math.round(base*(1+swing/100));
+  const val=parseInt(prompt(`Day ${i+1} override (MMBtu)\nRange: ${fmt(min)}–${fmt(max)}`,dfOverrides[idx+'_'+i]||base));
+  if(!isNaN(val)&&val>=0){dfOverrides[idx+'_'+i]=val;rebuildDFChart(idx);}
+}
+function resetDF(idx){
+  Object.keys(dfOverrides).filter(k=>k.startsWith(idx+'_')).forEach(k=>delete dfOverrides[k]);
+  rebuildDFChart(idx);
+}
+function updateDF(idx){rebuildDFChart(idx);}
+function rebuildDFChart(idx){
+  const base=parseInt(document.getElementById('dfb-'+idx)?.value)||8000;
+  const swing=parseInt(document.getElementById('dfs-'+idx)?.value)||10;
+  const o=DF_ORDERS[idx];
+  const days=[...Array(o.days)].map((_,i)=>({day:i+1,vol:dfOverrides[idx+'_'+i]||base,override:!!dfOverrides[idx+'_'+i]}));
+  const maxV=base*(1+swing/100);
+  const el=document.getElementById('dfc-'+idx);
+  if(el) el.innerHTML=days.map((d,i)=>`<div class="dfc-bar ${d.override?'override':''}" style="height:${Math.max(3,(d.vol/maxV*100)).toFixed(0)}%" title="Day ${d.day}: ${fmt(d.vol)} MMBtu" onclick="overrideDF(${idx},${i})"></div>`).join('');
+}
+
+// ─── NEW ORDER ────────────────────────────────────────────────
+let mode='otc',role='buy',pData=null,qData=null;
+function setMode(m){mode=m;document.getElementById('mOTC').classList.toggle('active',m==='otc');document.getElementById('mIGX').classList.toggle('active',m==='igx');document.getElementById('secOTC').style.display=m==='otc'?'block':'none';document.getElementById('secIGX').style.display=m==='igx'?'block':'none';document.getElementById('modeDesc').textContent=m==='otc'?'OTC mode — upload your supply contract. GasRoute arranges all physical logistics. You own the commodity.':'IGX mode — you source gas via IGX. GasRoute handles all physical delivery logistics.';resetQ();}
+function setRole(r){role=r;document.getElementById('rBuy').classList.toggle('active',r==='buy');document.getElementById('rSell').classList.toggle('active',r==='sell');}
+function hFile(f){if(f)document.getElementById('uzT').textContent='📄 '+f.name+' — ready to analyse';}
+const FB={seller:'Shell Energy India Pvt. Ltd.',buyer:'Arvind Textiles Ltd.',pickup:'Hazira LNG Terminal, Gujarat',dropoff:'Naroda Industrial Estate, Ahmedabad',volume:'8,000 MMBtu/day',period:'01 May 2026 – 31 May 2026',commodity_price:'₹1,080/MMBtu',contract_ref:'GSA-2026-SHELL-ARVIND-07',mode:'Pipeline + SSLNG Truck relay'};
+async function analyse(){
+  const txt=document.getElementById('cText').value.trim();
+  document.getElementById('ldRow').style.display='block';
+  document.getElementById('ppanel').style.display='none';
+  resetQ();
+  let p=FB;
+  if(txt.length>30){try{const r=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:700,messages:[{role:'user',content:`Extract from this Indian gas supply contract. Return ONLY JSON with keys: seller,buyer,pickup,dropoff,volume,period,commodity_price,contract_ref,mode. Prefix uncertain values with "~".\n\n${txt}`}]})});const d=await r.json();p=JSON.parse(d.content[0].text.replace(/```json|```/g,'').trim());}catch(e){p=FB;}}
+  document.getElementById('ldRow').style.display='none';
+  pData=p;renderPP(p);
+}
+function renderPP(p){
+  const fs=[['Seller',p.seller,0],['Buyer',p.buyer,0],['Pickup',p.pickup,(p.pickup||'').startsWith('~')],['Drop-off',p.dropoff,(p.dropoff||'').startsWith('~')],['Volume',p.volume,0],['Period',p.period,(p.period||'').startsWith('~')],['Commodity Price',p.commodity_price,0],['Contract Ref',p.contract_ref,0],['Logistics Mode',p.mode||'GasRoute optimal',0]];
+  document.getElementById('ppFields').innerHTML=fs.map(([l,v,u])=>`<div class="pf${u?' unc':''}"><div class="pfl">${l}</div><div class="pfv"><input value="${(v||'').replace(/^~/,'')}" data-k="${l}"></div></div>`).join('');
+  const src=(p.pickup||'Origin').replace(/^~/,'').split(',')[0];
+  const dst=(p.dropoff||'Dest.').replace(/^~/,'').split(',')[0];
+  const md=(p.mode||'Pipeline + Truck').replace(/^~/,'');
+  document.getElementById('rvHolder').innerHTML=`<div class="rv"><div class="rv-nd"><div class="rv-dot s"></div><div class="rv-lbl">PICKUP</div><div class="rv-nm">${src}</div></div><div class="rv-line"><span class="rv-tag">${md}</span></div><div class="rv-nd"><div class="rv-dot d"></div><div class="rv-lbl">DROPOFF</div><div class="rv-nm">${dst}</div></div></div>`;
+  document.getElementById('ppanel').style.display='block';
+}
+function confirmP(){document.querySelectorAll('#ppFields .pfv input').forEach(i=>{if(pData&&i.dataset.k)pData[i.dataset.k]=i.value;});document.getElementById('ppanel').style.display='none';buildOTCQ(pData);}
+function rejectP(){document.getElementById('ppanel').style.display='none';document.getElementById('cText').value='';}
+function buildOTCQ(p){
+  const vol=parseFloat((p.volume||'8000').replace(/[^0-9.]/g,''))||8000;
+  const cp=parseFloat((p.commodity_price||'1080').replace(/[^0-9.]/g,''))||1080;
+  const fee=24+Math.floor(Math.random()*16);const ai=cp+fee;const tot=ai*vol;const sav=mktPrice-ai;
+  qData={vol,cp,fee,ai,tot,sav,ref:p.contract_ref||'GR-'+Date.now().toString().slice(-5),p};showQ(qData,'OTC');
+}
+const HUB_P={Dahej:1092,Hazira:1148,Mhaskal:1187,Ankot:1210,Suvali:1044,Bokaro:910};
+function bldQ(){
+  if(mode!=='igx')return;
+  const hub=document.getElementById('igxHub').value;const vol=parseFloat(document.getElementById('igxV').value)||0;
+  if(!hub||!vol)return;
+  const cp=HUB_P[hub]||1100;const fee=22+Math.floor(Math.random()*20);const ai=cp+fee;const tot=ai*vol;const sav=mktPrice-ai;
+  qData={vol,cp,fee,ai,tot,sav,ref:'IGX-'+Date.now().toString().slice(-5),hub};showQ(qData,'IGX');
+}
+function showQ(q,type){
+  const qb=document.getElementById('qbox');qb.style.display='block';
+  qb.innerHTML=`
+    <div style="font-size:9px;color:var(--amber);text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">GASROUTE LOGISTICS QUOTE · ${type}</div>
+    <div class="q-big"><span class="q-price">${fmtR(q.fee)}</span><span class="q-unit">/ MMBtu · logistics only</span></div>
+    <div class="q-context">Your commodity cost is separate — this is your GasRoute logistics fee only</div>
+    <div class="q-grid">
+      <span class="ql">Logistics rate (₹/MMBtu)</span><span class="qv hl">${fmtR(q.fee)}</span>
+      <span class="ql">Volume</span><span class="qv">${fmt(q.vol)} MMBtu</span>
+      <span class="ql">Total logistics cost (₹)</span><span class="qv hl">${fmtR(q.fee*q.vol)}</span>
+      <span class="ql">Total logistics cost (USD ~)</span><span class="qv">$${fmt((q.fee*q.vol)/85)}</span>
+      <span class="q-div"></span>
+      <span class="ql">Ref</span><span class="qv">${q.ref}</span>
+    </div>
+    ${q.sav>0?`<div class="q-savings"><span style="color:var(--text3)">vs current market (${fmtR(mktPrice)}/MMBtu)</span><span style="color:var(--green2);font-weight:500">Save ${fmtR(q.sav)}/MMBtu · ${fmtR(q.sav*q.vol)} total</span></div>`:''}`;
+  document.getElementById('execBtn').style.display='block';
+}
+function resetQ(){document.getElementById('qbox').style.display='none';document.getElementById('execBtn').style.display='none';document.getElementById('succBanner').style.display='none';qData=null;}
+function execOrder(){
+  if(!qData)return;
+  document.getElementById('execBtn').style.display='none';
+  const b=document.getElementById('succBanner');b.style.display='block';
+  b.innerHTML=`<div class="succ-t">ORDER EXECUTING — LOGISTICS DISPATCHING</div><div class="succ-r">REF: ${qData.ref} · ${fmt(qData.vol)} MMBtu · ${fmtR(qData.ai)}/MMBtu · GasRoute booking capacity now</div>`;
+}
+(()=>{const t=new Date();t.setDate(t.getDate()+1);const e=new Date(t);e.setDate(e.getDate()+30);const f=document.getElementById('igxF');const to=document.getElementById('igxT');if(f)f.value=t.toISOString().slice(0,10);if(to)to.value=e.toISOString().slice(0,10);})();
+
+// ─── IGX TAB ─────────────────────────────────────────────────
+function renderIGX(){
+  document.getElementById('igxCards').innerHTML=[['11,316','Total Sessions'],['1,816 (16%)','Missed Trades'],['$182,708,891','Missed Value (USD)'],['$4,795,144,176','Total Opportunity (USD)']].map(([v,l])=>`<div style="background:var(--bg2);border:1px solid var(--border);padding:12px;text-align:center"><div style="font-size:16px;font-weight:600;color:var(--amber3)">${v}</div><div style="font-size:9px;color:var(--text3);margin-top:3px;text-transform:uppercase;letter-spacing:.06em">${l}</div></div>`).join('');
+  const rows=[['Dahej','746','$116,900,000','₹199','Pipeline + SSLNG'],['Mhaskal','370','$20,000,000','₹154','Pipeline'],['Hazira','99','$17,900,000','₹131','Regas terminal'],['Suvali','137','$9,200,000','₹172','SSLNG Truck'],['Ankot','207','$8,700,000','₹193','Pipeline'],['Bhadbhut','40','$2,700,000','₹234','Truck + pipe'],['Bokaro','86','$1,900,000','₹94','ISO Container']];
+  document.getElementById('igxTbl').innerHTML=`<thead><tr>${['Hub','Missed Sessions','Value (USD)','Avg Spread','Logistics Mode'].map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((c,i)=>`<td style="color:${i===0?'var(--text)':i===3?'var(--amber)':'var(--text2)'}">${c}</td>`).join('')}</tr>`).join('')}</tbody>`;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// LIVE TRACKING
+// ═══════════════════════════════════════════════════════════════
+
+// ── GEO DATA — SOUTH & SOUTHEAST ASIA INFRASTRUCTURE ─────────
+const LOCS = {
+  // INDIA: LNG TERMINALS
+  hazira:       [21.0665, 72.6466],
+  dahej:        [21.7051, 72.5713],
+  dabhol:       [17.5890, 73.1760],
+  kochi:        [9.9312,  76.2673],
+  ennore:       [13.2167, 80.3167],
+  mundra:       [22.8390, 69.7143],
+  jaigarh:      [16.9917, 73.2261],
+  gangavaram:   [17.6230, 83.2147],
+  // INDIA: GAS HUBS
+  mhaskal:      [18.9220, 74.1510],
+  ankot:        [21.4150, 73.0100],
+  suvali:       [21.1350, 72.6430],
+  bhadbhut:     [21.7080, 72.9310],
+  bokaro:       [23.6693, 86.1511],
+  // INDIA: CITIES & INDUSTRIAL
+  ahmedabad:    [23.0225, 72.5714],
+  naroda:       [23.0510, 72.6650],
+  surat:        [21.1702, 72.8311],
+  vadodara:     [22.3072, 73.1812],
+  mumbai:       [19.0760, 72.8777],
+  pune:         [18.5204, 73.8567],
+  nagpur:       [21.1458, 79.0882],
+  hyderabad:    [17.3850, 78.4867],
+  chennai:      [13.0827, 80.2707],
+  bangalore:    [12.9716, 77.5946],
+  delhi:        [28.6139, 77.2090],
+  kolkata:      [22.5726, 88.3639],
+  vizag:        [17.6868, 83.2185],
+  // INDIA: PORTS
+  nhava_sheva:  [18.9480, 72.9512],
+  kandla:       [23.0333, 70.2167],
+  paradip:      [20.3167, 86.6167],
+  haldia:       [22.0667, 88.1000],
+  new_mangalore:[12.9194, 74.8131],
+  tuticorin:    [8.7642,  78.1348],
+  // PIPELINE WAYPOINTS: GGCL Dahej->Ahmedabad
+  ggcl_1:       [21.8500, 72.6000],
+  ggcl_2:       [22.3000, 72.5800],
+  ggcl_3:       [22.7000, 72.5900],
+  // PIPELINE WAYPOINTS: GAIL HVJ Hazira->Delhi
+  hvj_1:        [21.5000, 73.2000],
+  hvj_2:        [22.8000, 74.6000],
+  hvj_3:        [24.5000, 76.5000],
+  hvj_4:        [26.0000, 77.8000],
+  vijaipur:     [24.6833, 77.0167],
+  // PIPELINE: DUPL/UUPL
+  dupl_1:       [23.5000, 73.5000],
+  dupl_2:       [25.0000, 75.5000],
+  dupl_3:       [26.5000, 78.0000],
+  // PIPELINE: GAIL South (Dabhol->Bangalore)
+  south_1:      [16.8000, 74.5000],
+  south_2:      [15.5000, 75.5000],
+  south_3:      [14.2000, 76.5000],
+  // PIPELINE: GSPL Gujarat grid
+  gspl_1:       [22.0000, 71.5000],
+  gspl_2:       [22.5000, 70.8000],
+  // PIPELINE: KKBMPL (Kochi->Bangalore->Mangalore) partial
+  kkbmpl_1:     [10.5000, 76.8000],
+  kkbmpl_2:     [11.5000, 77.2000],
+  // RAILWAY: WDFC (Mumbai->Delhi)
+  wdfc_1:       [18.9500, 72.9500],
+  wdfc_2:       [20.0000, 73.5000],
+  wdfc_3:       [21.5000, 73.9000],
+  wdfc_4:       [23.0000, 74.5000],
+  wdfc_5:       [25.0000, 75.8000],
+  wdfc_6:       [26.5000, 76.5000],
+  wdfc_7:       [28.0000, 77.0000],
+  // RAILWAY: EDFC (Kolkata->Delhi)
+  edfc_1:       [22.5726, 88.3639],
+  edfc_2:       [25.0000, 85.0000],
+  edfc_3:       [26.5000, 82.0000],
+  edfc_4:       [27.5000, 80.0000],
+  edfc_5:       [28.6139, 77.2090],
+  // RAILWAY: Southern rail Chennai->Mumbai
+  srail_1:      [13.0827, 80.2707],
+  srail_2:      [12.9716, 77.5946],
+  srail_3:      [15.0000, 75.5000],
+  srail_4:      [17.5000, 74.2000],
+  srail_5:      [19.0760, 72.8777],
+  // SHIPPING LANES
+  lane_gulf_1:  [24.0000, 58.0000],
+  lane_gulf_2:  [20.0000, 63.0000],
+  lane_io1:     [15.0000, 67.0000],
+  lane_io2:     [10.0000, 72.0000],
+  lane_io3:     [6.0000,  78.0000],
+  lane_io4:     [2.0000,  82.0000],
+  lane_sg:      [1.3521,  103.8198],
+  lane_strait:  [1.0000,  104.5000],
+  lane_scs1:    [5.0000,  108.0000],
+  lane_scs2:    [10.0000, 111.0000],
+  lane_vietnam: [10.8231, 106.6297],
+  lane_indo:    [-1.0000, 117.0000],
+  // SE ASIA: LNG TERMINALS & PORTS
+  singapore:    [1.3521,  103.8198],
+  sg_jurong:    [1.2700,  103.7000],
+  penang:       [5.4164,  100.3327],
+  klang:        [3.0000,  101.4000],
+  johor:        [1.4854,  103.7618],
+  jakarta:      [-6.2088, 106.8456],
+  surabaya:     [-7.2575, 112.7521],
+  bontang:      [0.1300,  117.4900],
+  arun:         [5.1750,  97.1000],
+  tangguh:      [-2.8000, 132.2000],
+  map_ta_phut:  [12.6748, 101.1553],
+  ho_chi_minh:  [10.8231, 106.6297],
+  haiphong:     [20.8449, 106.6881],
+  manila:       [14.5995, 120.9842],
+  myanmar_thil: [16.7667, 96.1667],
+  chittagong:   [22.3569, 91.7832],
+  colombo:      [6.9271,  79.8612],
+  hambantota:   [6.1241,  81.1185],
+  // GULF LNG EXPORTERS
+  ras_laffan:   [25.9000, 51.5500],
+  das_island:   [25.1500, 52.8700],
+  oman_lng:     [22.3500, 59.5000],
+};
+
+
+// ── SHIPMENT DATA ──────────────────────────────────────────────
+const SHIPMENTS = [
+  {
+    id:'GR-T-031', mode:'truck', ref:'GR-2026-031',
+    label:'SSLNG Truck · TN-04-LNG-2041',
+    origin:'Hazira LNG Terminal', dest:'Naroda Plant, Ahmedabad',
+    oCoord:LOCS.hazira, dCoord:LOCS.naroda,
+    waypoints:[LOCS.hazira,[21.2,72.8],[21.7,72.7],[22.4,72.6],LOCS.naroda],
+    progress:0.72, vol:'2,000 MMBtu', eta:'Tomorrow 06:00',
+    status:'FLOWING', driver:'Suresh Kumar', truck:'TN-04-LNG-2041',
+    color:'#e8980a', colorName:'truck', ais:null,
+  },
+  {
+    id:'GR-T-024', mode:'truck', ref:'GR-2026-024',
+    label:'SSLNG Truck · GJ-05-LNG-0817',
+    origin:'Dahej LNG Terminal', dest:'Naroda Plant, Ahmedabad',
+    oCoord:LOCS.dahej, dCoord:LOCS.naroda,
+    waypoints:[LOCS.dahej,[21.9,72.6],[22.4,72.6],LOCS.naroda],
+    progress:0.41, vol:'24,000 MMBtu', eta:'16 Apr 14:00',
+    status:'IN TRANSIT', driver:'Prakash Mehta', truck:'GJ-05-LNG-0817',
+    color:'#e8980a', colorName:'truck', ais:null,
+  },
+  {
+    id:'GR-P-017', mode:'pipe', ref:'GR-2026-017',
+    label:'Pipeline · GGCL Mainline',
+    origin:'Dahej Hub', dest:'Mhaskal Hub',
+    oCoord:LOCS.dahej, dCoord:LOCS.mhaskal,
+    waypoints:[LOCS.dahej,LOCS.ggcl_1,LOCS.ggcl_2,LOCS.ggcl_3,LOCS.mhaskal],
+    progress:0.00, vol:'38,000 MMBtu', eta:'22 Apr 2026',
+    status:'SCHEDULED', pipeline:'GGCL Mainline',
+    color:'#1ab8cc', colorName:'pipe', ais:null,
+  },
+  // AIS ON — Ras Laffan → Dahej
+  {
+    id:'GR-S-009', mode:'ship', ref:'GR-2026-009',
+    label:'LNG Carrier · MT Ratnagiri LNG',
+    origin:'Ras Laffan, Qatar', dest:'Dahej LNG Terminal',
+    oCoord:LOCS.ras_laffan, dCoord:LOCS.dahej,
+    waypoints:[LOCS.ras_laffan,[24.5,57.0],[22.0,60.5],[18.0,62.5],[14.0,65.0],[10.0,67.5],[14.5,70.5],[18.5,71.8],[20.5,72.2],LOCS.dahej],
+    progress:0.64, vol:'3,600,000 MMBtu (138,000 m³)', eta:'19 Apr 2026 08:00',
+    status:'IN TRANSIT', vessel:'MT Ratnagiri LNG', imo:'IMO 9867234',
+    flag:'IN', vesselType:'LNG Carrier (Q-Flex)', speed:'17.4 kn', heading:58,
+    lastUpdate:'2 min ago',
+    ais:{ on:true, mmsi:'419001234', callsign:'VRLN4', draught:'11.2m' },
+    color:'#7b68ee', colorName:'ship',
+  },
+  // AIS ON — Bontang → Kochi
+  {
+    id:'GR-S-011', mode:'ship', ref:'GR-2026-011',
+    label:'LNG Carrier · MT Godavari Gas',
+    origin:'Bontang LNG, Indonesia', dest:'Kochi LNG Terminal',
+    oCoord:LOCS.bontang, dCoord:LOCS.kochi,
+    waypoints:[LOCS.bontang,[2.0,113.0],[1.35,103.82],[1.0,103.5],[3.5,98.0],[6.0,93.0],[8.5,84.0],[10.0,80.5],[8.5,78.5],LOCS.kochi],
+    progress:0.38, vol:'2,900,000 MMBtu (110,000 m³)', eta:'23 Apr 2026 14:00',
+    status:'IN TRANSIT', vessel:'MT Godavari Gas', imo:'IMO 9712088',
+    flag:'IN', vesselType:'LNG Carrier (DFDE)', speed:'15.8 kn', heading:285,
+    lastUpdate:'7 min ago',
+    ais:{ on:true, mmsi:'419002871', callsign:'VTGD9', draught:'10.8m' },
+    color:'#7b68ee', colorName:'ship',
+  },
+  // AIS OFF — dark vessel, Das Island → Hazira
+  {
+    id:'GR-S-013', mode:'ship', ref:'GR-2026-013',
+    label:'LNG Carrier · MT Krishna Bhumi',
+    origin:'Das Island, Abu Dhabi', dest:'Hazira LNG Terminal',
+    oCoord:LOCS.das_island, dCoord:LOCS.hazira,
+    waypoints:[LOCS.das_island,[24.8,55.5],[23.5,58.0],[21.0,61.0],[17.5,63.0],[14.0,65.5],[16.0,68.5],[19.0,70.5],[20.5,71.5],LOCS.hazira],
+    progress:0.51, vol:'4,100,000 MMBtu (158,000 m³)', eta:'17 Apr 2026 22:00',
+    status:'IN TRANSIT', vessel:'MT Krishna Bhumi', imo:'IMO 9534177',
+    flag:'IN', vesselType:'LNG Carrier (Steam)', speed:'?', heading:82,
+    lastUpdate:'4h 22min ago',
+    ais:{ on:false, mmsi:'419003344', callsign:'VTKS2', draught:'unknown',
+      darkNote:'AIS offline since 13 Apr 18:40 UTC. Last known: 18.2°N 63.1°E. Position extrapolated.' },
+    color:'#7b68ee', colorName:'ship',
+  },
+  // AIS ON — coastal bunkering vessel
+  {
+    id:'GR-S-015', mode:'ship', ref:'GR-2026-015',
+    label:'LNG Bunkering · MV Saurashtra',
+    origin:'Mundra Port', dest:'Nhava Sheva (JNPT)',
+    oCoord:LOCS.mundra, dCoord:LOCS.nhava_sheva,
+    waypoints:[LOCS.mundra,[22.5,70.0],[21.5,70.5],[20.5,71.2],[19.8,72.3],LOCS.nhava_sheva],
+    progress:0.58, vol:'180,000 MMBtu (6,900 m³)', eta:'18 Apr 09:00',
+    status:'IN TRANSIT', vessel:'MV Saurashtra', imo:'IMO 9441902',
+    flag:'IN', vesselType:'Small-Scale LNG Bunkering', speed:'11.2 kn', heading:142,
+    lastUpdate:'1 min ago',
+    ais:{ on:true, mmsi:'419004512', callsign:'VTSV7', draught:'5.4m' },
+    color:'#7b68ee', colorName:'ship',
+  },
+  {
+    id:'GR-R-014', mode:'rail', ref:'GR-2026-014',
+    label:'ISO Container · IR Freight',
+    origin:'Hazira Hub', dest:'Nagpur Yard',
+    oCoord:LOCS.hazira, dCoord:LOCS.nagpur,
+    waypoints:[LOCS.hazira,[21.5,73.5],[21.8,76.0],LOCS.nagpur],
+    progress:0.33, vol:'8,000 MMBtu', eta:'17 Apr 18:00',
+    status:'IN TRANSIT', train:'IR-FR-4421', containers:'4x ISO',
+    color:'#3d9e52', colorName:'rail', ais:null,
+  },
+  {
+    id:'GR-W-002', mode:'wh', ref:'GR-WH-DAHEJ',
+    label:'Warehouse · Dahej LNG Hub',
+    origin:'Dahej Terminal', dest:'Dahej Terminal',
+    oCoord:LOCS.dahej, dCoord:LOCS.dahej,
+    waypoints:[LOCS.dahej],
+    progress:1.0, vol:'12,000 MMBtu stored', eta:'Buffer stock',
+    status:'IN STORAGE', capacity:'85% full',
+    color:'#706050', colorName:'wh', ais:null,
+  },
+];
+
+// AIS vessel state — tracks move/pause cycle per vessel
+const _vesselState = {};
+SHIPMENTS.filter(s => s.mode==='ship').forEach(s => {
+  const aisOn = s.ais && s.ais.on;
+  _vesselState[s.id] = {
+    moving: aisOn,
+    heading: s.heading || 90,
+    moveTimer: 0,
+    pauseTimer: aisOn ? 0 : 5 + Math.floor(Math.random()*10),
+    nextPause:  8 + Math.floor(Math.random()*12),
+    nextResume: aisOn ? 3 : 15 + Math.floor(Math.random()*20),
+  };
+});
+
+// ── HEATMAP DATA (6 months, ~180 days, per route) ──────────────
+function genHmData(route) {
+  // Seed per route so it's consistent
+  const seeds = {all:42, hazira:7, dahej:13, mhaskal:19};
+  const seed = seeds[route] || 42;
+  let s = seed;
+  function rand() { s = (s * 1103515245 + 12345) & 0x7fffffff; return s / 0x7fffffff; }
+  return Array.from({length:182}, (_,i) => {
+    const r = rand();
+    if (route !== 'all' && r < 0.35) return 'empty'; // not every day has a delivery
+    if (r < 0.78) return 'on';
+    if (r < 0.92) return 'late';
+    return 'miss';
+  });
+}
+
+let hmRoute = 'all';
+function setHmRoute(r, btn) {
+  hmRoute = r;
+  document.querySelectorAll('.rt-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderHeatmap();
+}
+
+function renderHeatmap() {
+  const data = genHmData(hmRoute);
+  const grid = document.getElementById('hmGrid');
+  if (!grid) return;
+  const months = ['Oct','Nov','Dec','Jan','Feb','Mar'];
+  // Add month labels row first... actually just render cells with tooltip
+  grid.innerHTML = data.map((d,i) => {
+    const month = months[Math.floor(i/30)];
+    const day = (i % 30) + 1;
+    return `<div class="hm-cell ${d}" title="${month} ${day}: ${d==='on'?'On time':d==='late'?'Late ≤4hr':d==='miss'?'Late >4hr':'No delivery'}" onclick="showHmDetail('${month} ${day}','${d}')"></div>`;
+  }).join('');
+}
+
+function showHmDetail(date, status) {
+  const msg = {on:'On time ✓', late:'Late — within 4hr window', miss:'Late — exceeded 4hr', empty:'No delivery scheduled'}[status];
+  // Could open a modal — for now just a tooltip already shows
+}
+
+// ── SHIPMENT CARDS ─────────────────────────────────────────────
+let activeCard = null;
+let currentFilter = 'all';
+
+const MODE_LABEL = {truck:'TRUCK',pipe:'PIPELINE',ship:'SHIP',rail:'RAIL/ISO',wh:'WAREHOUSE'};
+
+function renderShipmentCards(filter) {
+  const filtered = SHIPMENTS.filter(s => filter==='all' || s.mode===filter);
+  document.getElementById('shipCount').textContent = filtered.length + ' in motion';
+  const container = document.getElementById('shipmentCards');
+  if (!container) return;
+  container.innerHTML = filtered.map(s => `
+    <div class="tcard ${s.colorName}-c ${activeCard===s.id?'active-card':''}" id="tc-${s.id}" onclick="selectShipment('${s.id}')">
+      <div class="tc-head">
+        <div class="tc-ref">${s.id} <span style="font-size:10px;color:var(--text3)">· ${s.label}</span></div>
+        <span class="tc-mode ${s.colorName}">${MODE_LABEL[s.mode]}</span>
+      </div>
+      <div class="tc-route">${s.origin} → ${s.dest}</div>
+      <div class="tc-kpi">
+        <span class="tc-eta">${s.eta}</span>
+        <span class="tc-vol">${s.vol}</span>
+        <span class="tc-status" style="color:${s.status==='IN TRANSIT'||s.status==='FLOWING'?'var(--green2)':s.status==='IN STORAGE'?'var(--cyan)':'var(--text3)'}">${s.status}</span>
+      </div>
+      ${s.progress > 0 ? `<div class="tc-progress"><div class="tc-prog-fill ${s.colorName}" style="width:${(s.progress*100).toFixed(0)}%"></div></div>` : ''}
+    </div>
+  `).join('');
+}
+
+function selectShipment(id) {
+  activeCard = id;
+  const s = SHIPMENTS.find(x => x.id === id);
+  if (!s) return;
+  renderShipmentCards(currentFilter);
+  // Pan map to shipment
+  if (window._map) {
+    const pos = interpolatePos(s);
+    window._map.setView(pos, 8, {animate:true});
+    // Highlight marker
+    if (window._markers && window._markers[id]) {
+      window._markers[id].openPopup();
+    }
+  }
+}
+
+// Interpolate current position along route
+function interpolatePos(s) {
+  if (s.mode === 'wh') return s.oCoord;
+  const wps = s.waypoints || [s.oCoord, s.dCoord];
+  const p = Math.max(0, Math.min(0.9999, s.progress));
+  const seg = Math.min(Math.floor(p * (wps.length-1)), wps.length-2);
+  const segP = (p * (wps.length-1)) - seg;
+  const a = wps[seg], b = wps[seg+1];
+  return [a[0]+(b[0]-a[0])*segP, a[1]+(b[1]-a[1])*segP];
+}
+
+function calcHeading(s) {
+  const wps = s.waypoints || [s.oCoord, s.dCoord];
+  const p = Math.max(0, Math.min(0.9999, s.progress));
+  const seg = Math.min(Math.floor(p * (wps.length-1)), wps.length-2);
+  const a = wps[seg], b = wps[seg+1];
+  return (Math.atan2(b[1]-a[1], b[0]-a[0]) * 180/Math.PI + 360) % 360;
+}
+
+// ── NOMINATION LOG ─────────────────────────────────────────────
+const NOM_EVENTS = [
+  {time:'Today 04:30', event:'Day-ahead nomination confirmed — GGCL Mainline', ref:'GR-2026-031', status:'ok'},
+  {time:'Today 03:58', event:'Nomination filed — GGCL · 2,000 MMBtu/day', ref:'GR-2026-031', status:'ok'},
+  {time:'Yesterday 17:00', event:'Truck dispatch confirmed — GJ-05-LNG-0817', ref:'GR-2026-024', status:'ok'},
+  {time:'Yesterday 14:22', event:'Volume nomination submitted — GGCL', ref:'GR-2026-017', status:'ok'},
+  {time:'14 Apr 09:15', event:'ISO container booking confirmed — IR Freight', ref:'GR-R-014', status:'ok'},
+  {time:'13 Apr 11:40', event:'Vessel berth confirmed — Mundra Port Authority', ref:'GR-S-009', status:'ok'},
+  {time:'13 Apr 08:00', event:'GAIL HVJ nomination submitted', ref:'GR-2026-017', status:'ok'},
+  {time:'12 Apr 16:30', event:'Storage slot confirmed — Dahej LNG Hub', ref:'GR-WH-DAHEJ', status:'ok'},
+  {time:'11 Apr 10:05', event:'PNGRB transit approval — DUPL segment', ref:'GR-2026-017', status:'warn'},
+  {time:'10 Apr 14:00', event:'Truck pre-booking confirmed · 3 tankers', ref:'GR-2026-024', status:'ok'},
+];
+
+function renderNomLog() {
+  const el = document.getElementById('nomLog');
+  if (!el) return;
+  el.innerHTML = NOM_EVENTS.map(n => `
+    <div class="nom-row">
+      <span class="nom-time">${n.time}</span>
+      <span class="nom-event">${n.event}<br><span style="color:var(--text4);font-size:9px">${n.ref}</span></span>
+      <span class="nom-status ${n.status}">${n.status==='ok'?'FILED':n.status==='warn'?'REVIEW':'PENDING'}</span>
+    </div>
+  `).join('');
+}
+
+// ── MAP INIT ──────────────────────────────────────────────────
+let mapInitialized = false;
+window._markers = {};
+window._routeLines = {};
+
+function initMap() {
+  if (mapInitialized || !document.getElementById('liveMap')) return;
+  if (typeof L === 'undefined') return;
+  mapInitialized = true;
+
+  const map = L.map('liveMap', {
+    center: [12.0, 90.0],
+    zoom: 4,
+    zoomControl: true,
+    minZoom: 3,
+    maxZoom: 14,
+  });
+  window._map = map;
+
+  // Dark CartoDB tiles
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap &copy; Carto',
+    maxZoom: 18,
+    subdomains: 'abcd',
+  }).addTo(map);
+
+  // ── SHIPPING LANES ──────────────────────────────────────────
+  // Gulf -> Indian Ocean -> Strait of Malacca -> SE Asia
+  const mainLane = [
+    LOCS.ras_laffan, LOCS.lane_gulf_1, LOCS.lane_gulf_2,
+    LOCS.lane_io1, LOCS.lane_io2, LOCS.lane_io3, LOCS.lane_io4,
+    LOCS.sg_jurong,
+  ];
+  const seAsiaLane = [
+    LOCS.sg_jurong, LOCS.lane_strait, LOCS.lane_scs1,
+    LOCS.lane_scs2, LOCS.lane_vietnam,
+  ];
+  const indoLane = [
+    LOCS.sg_jurong, LOCS.lane_indo, LOCS.bontang,
+  ];
+  const westCoastLane = [
+    LOCS.ras_laffan, LOCS.oman_lng, [12.0, 56.0],
+    [8.0, 55.0], [4.0, 60.0], [2.0, 72.0],
+    LOCS.mundra, LOCS.kandla,
+  ];
+  const eastCoastLane = [
+    [8.0, 78.0], LOCS.tuticorin, LOCS.new_mangalore,
+    LOCS.ennore, LOCS.vizag, LOCS.gangavaram,
+    LOCS.paradip, LOCS.haldia, LOCS.chittagong,
+  ];
+
+  const laneStyle = { color:'#7b68ee', weight:1.2, opacity:0.25, dashArray:'8,6' };
+  [mainLane, seAsiaLane, indoLane, westCoastLane, eastCoastLane].forEach(l =>
+    L.polyline(l, laneStyle).addTo(map)
+  );
+
+  // ── INDIAN GAS PIPELINES — three visual styles ──────────────
+  // Inject CSS for animated pipelines
+  if (!document.getElementById('pipeCSS')) {
+    const s = document.createElement('style');
+    s.id = 'pipeCSS';
+    s.textContent = `
+      @keyframes flowDash { from { stroke-dashoffset: 40; } to { stroke-dashoffset: 0; } }
+      @keyframes glowPulse { 0%,100%{opacity:0.8} 50%{opacity:1} }
+      .pipe-flow { animation: flowDash 1.8s linear infinite; }
+      .pipe-flow-slow { animation: flowDash 2.8s linear infinite; }
+      .pipe-glow { animation: glowPulse 2.5s ease-in-out infinite; }
+    `;
+    document.head.appendChild(s);
+  }
+
+  // STYLE A — GLOW (active high-pressure, GasRoute-relevant)
+  const glowPipes = [
+    { name:'GGCL — Dahej → Ahmedabad', coords:[LOCS.dahej, LOCS.ggcl_1, LOCS.ggcl_2, LOCS.ggcl_3, LOCS.naroda] },
+    { name:'GSPL — Hazira → Gujarat grid', coords:[LOCS.hazira, LOCS.suvali, LOCS.surat, LOCS.vadodara, LOCS.ahmedabad] },
+  ];
+  glowPipes.forEach((p,i) => {
+    // Outer glow halo
+    L.polyline(p.coords, { color:'#1ab8cc', weight:8, opacity:0.06 }).addTo(map);
+    L.polyline(p.coords, { color:'#1ab8cc', weight:4, opacity:0.14 }).addTo(map);
+    // Animated core
+    const core = L.polyline(p.coords, { color:'#1ab8cc', weight:2, opacity:0.85, className:'pipe-glow' }).addTo(map);
+    core.bindTooltip(`<span style="font-family:IBM Plex Mono,monospace;font-size:10px;color:#1ab8cc">${p.name}</span>`, { className:'gas-tooltip', sticky:true });
+  });
+
+  // STYLE B — DOUBLE-LINE CASING (major trunk lines)
+  const casingPipes = [
+    { name:'GAIL HVJ — Hazira → Delhi', coords:[LOCS.hazira, LOCS.hvj_1, LOCS.hvj_2, LOCS.vijaipur, LOCS.hvj_3, LOCS.hvj_4, LOCS.delhi] },
+    { name:'DUPL/UUPL — Dahej → Delhi', coords:[LOCS.dahej, LOCS.dupl_1, LOCS.dupl_2, LOCS.dupl_3, LOCS.delhi] },
+    { name:'GAIL South — Dabhol → Bangalore', coords:[LOCS.dabhol, LOCS.south_1, LOCS.south_2, LOCS.south_3, LOCS.bangalore] },
+  ];
+  casingPipes.forEach(p => {
+    // Dark outer casing
+    L.polyline(p.coords, { color:'#0a1520', weight:5, opacity:0.95 }).addTo(map);
+    // Bright inner fill
+    const inner = L.polyline(p.coords, { color:'#1ab8cc', weight:2, opacity:0.65 }).addTo(map);
+    inner.bindTooltip(`<span style="font-family:IBM Plex Mono,monospace;font-size:10px;color:#1ab8cc">${p.name}</span>`, { className:'gas-tooltip', sticky:true });
+    // Flange dots at waypoints
+    p.coords.slice(1,-1).forEach(c => {
+      L.circleMarker(c, { radius:2.5, color:'#1ab8cc', fillColor:'#080806', fillOpacity:1, weight:1.5, opacity:0.6 }).addTo(map);
+    });
+  });
+
+  // STYLE C — ANIMATED FLOWING DASH (regional spurs)
+  const flowPipes = [
+    { name:'KKBMPL — Kochi → Bangalore', coords:[LOCS.kochi, LOCS.kkbmpl_1, LOCS.kkbmpl_2, LOCS.bangalore], delay:'0s' },
+    { name:'Dahej → Mumbai spur', coords:[LOCS.dahej, [20.5, 72.9], LOCS.nhava_sheva], delay:'0.5s' },
+    { name:'GSPL Gujarat coastal', coords:[LOCS.hazira, LOCS.gspl_2, LOCS.gspl_1, LOCS.mundra, LOCS.kandla], delay:'1s' },
+    { name:'Ennore → Bangalore spur', coords:[LOCS.ennore, [12.5, 79.5], LOCS.bangalore], delay:'1.5s' },
+  ];
+  flowPipes.forEach(p => {
+    L.polyline(p.coords, { color:'#1ab8cc', weight:1.5, opacity:0.12 }).addTo(map);
+    const flow = L.polyline(p.coords, { color:'#1ab8cc', weight:2, opacity:0.55, dashArray:'10,12', className:'pipe-flow' }).addTo(map);
+    flow.getElement && setTimeout(() => { const el = flow.getElement(); if(el) el.style.animationDelay = p.delay; }, 500);
+    flow.bindTooltip(`<span style="font-family:IBM Plex Mono,monospace;font-size:10px;color:#1ab8cc">${p.name}</span>`, { className:'gas-tooltip', sticky:true });
+  });
+
+// ── RAILWAY FREIGHT CORRIDORS ───────────────────────────────
+  const railways = [
+    { name:'WDFC — Western DFC (Mumbai–Delhi)', coords:[LOCS.wdfc_1,LOCS.wdfc_2,LOCS.wdfc_3,LOCS.wdfc_4,LOCS.wdfc_5,LOCS.wdfc_6,LOCS.wdfc_7,LOCS.delhi] },
+    { name:'EDFC — Eastern DFC (Kolkata–Delhi)', coords:[LOCS.edfc_1,LOCS.edfc_2,LOCS.edfc_3,LOCS.edfc_4,LOCS.edfc_5] },
+    { name:'Southern Rail Corridor', coords:[LOCS.srail_1,LOCS.srail_2,LOCS.srail_3,LOCS.srail_4,LOCS.srail_5] },
+    { name:'Chennai–Kolkata rail', coords:[LOCS.chennai,[15.0,80.5],[18.0,83.5],LOCS.vizag,[20.5,85.5],LOCS.kolkata] },
+    { name:'Nagpur–Hazira freight', coords:[LOCS.nagpur,[21.5,76.0],[21.8,74.5],LOCS.hazira] },
+  ];
+
+  railways.forEach(r => {
+    L.polyline(r.coords, {
+      color:'#3d9e52', weight:1.5, opacity:0.4, dashArray:'5,4',
+    }).addTo(map).bindTooltip(
+      `<span style="font-family:IBM Plex Mono,monospace;font-size:10px;color:#3d9e52">${r.name}</span>`,
+      { className:'gas-tooltip', sticky:true }
+    );
+  });
+
+  // ── INFRASTRUCTURE MARKERS ──────────────────────────────────
+  const INFRA = [
+    // LNG Terminals — India
+    { name:'Hazira LNG Terminal\n(Shell/Total · 5 MTPA)', coord:LOCS.hazira,     type:'lng', active:true },
+    { name:'Dahej LNG Terminal\n(PLL · 17.5 MTPA)',      coord:LOCS.dahej,      type:'lng', active:true },
+    { name:'Dabhol LNG Terminal\n(RGPPL · 5 MTPA)',      coord:LOCS.dabhol,     type:'lng', active:true },
+    { name:'Kochi LNG Terminal\n(PLL · 5 MTPA)',         coord:LOCS.kochi,      type:'lng', active:true },
+    { name:'Ennore LNG Terminal\n(IOC · 5 MTPA)',        coord:LOCS.ennore,     type:'lng', active:true },
+    { name:'Mundra LNG Terminal\n(GSPC · 5 MTPA)',       coord:LOCS.mundra,     type:'lng', active:true },
+    { name:'Gangavaram LNG\n(proposed)',                  coord:LOCS.gangavaram, type:'lng', active:false },
+    { name:'Jaigarh LNG\n(H-Energy · proposed)',         coord:LOCS.jaigarh,    type:'lng', active:false },
+    // Gas Hubs
+    { name:'Mhaskal Hub\n(GAIL delivery point)',    coord:LOCS.mhaskal,  type:'hub' },
+    { name:'Ankot Hub',                             coord:LOCS.ankot,    type:'hub' },
+    { name:'Suvali Delivery Point',                 coord:LOCS.suvali,   type:'hub' },
+    { name:'Bhadbhut Delivery Point',               coord:LOCS.bhadbhut, type:'hub' },
+    { name:'Bokaro Delivery Point',                 coord:LOCS.bokaro,   type:'hub' },
+    // Ports — India
+    { name:'JNPT / Nhava Sheva', coord:LOCS.nhava_sheva, type:'port' },
+    { name:'Kandla Port',        coord:LOCS.kandla,       type:'port' },
+    { name:'Paradip Port',       coord:LOCS.paradip,      type:'port' },
+    { name:'Haldia Port',        coord:LOCS.haldia,       type:'port' },
+    { name:'New Mangalore Port', coord:LOCS.new_mangalore,type:'port' },
+    { name:'Tuticorin Port',     coord:LOCS.tuticorin,    type:'port' },
+    // LNG Terminals — SE Asia
+    { name:'Singapore\nJurong Island LNG Terminal\n(4.5 MTPA)', coord:LOCS.sg_jurong,   type:'lng', active:true },
+    { name:'Bontang LNG\nIndonesia (export · 22 MTPA)',         coord:LOCS.bontang,      type:'lng', active:true },
+    { name:'Arun LNG\nAceh, Indonesia (legacy)',                coord:LOCS.arun,         type:'lng', active:true },
+    { name:'Tangguh LNG\nPapua, Indonesia (export)',            coord:LOCS.tangguh,      type:'lng', active:true },
+    { name:'Map Ta Phut\nThailand LNG Terminal',                coord:LOCS.map_ta_phut,  type:'lng', active:true },
+    { name:'Port of Singapore',  coord:LOCS.singapore,    type:'port' },
+    { name:'Port Klang\nMalaysia',coord:LOCS.klang,       type:'port' },
+    { name:'Jakarta Port',       coord:LOCS.jakarta,      type:'port' },
+    { name:'Ho Chi Minh Port',   coord:LOCS.ho_chi_minh,  type:'port' },
+    { name:'Haiphong Port',      coord:LOCS.haiphong,     type:'port' },
+    { name:'Chittagong Port\nBangladesh',coord:LOCS.chittagong,  type:'port' },
+    { name:'Colombo Port\nSri Lanka',   coord:LOCS.colombo,      type:'port' },
+    { name:'Hambantota Port',    coord:LOCS.hambantota,   type:'port' },
+    // Gulf LNG Exporters
+    { name:'Ras Laffan\nQatar LNG (world largest · 77 MTPA)', coord:LOCS.ras_laffan, type:'export' },
+    { name:'Das Island\nADNOC LNG, Abu Dhabi',                coord:LOCS.das_island, type:'export' },
+    { name:'Oman LNG\nSur terminal',                          coord:LOCS.oman_lng,   type:'export' },
+    // Key industrial cities
+    { name:'Ahmedabad\nIndustrial corridor',  coord:LOCS.ahmedabad,  type:'city' },
+    { name:'Mumbai',                           coord:LOCS.mumbai,     type:'city' },
+    { name:'Chennai',                          coord:LOCS.chennai,    type:'city' },
+    { name:'Bangalore',                        coord:LOCS.bangalore,  type:'city' },
+    { name:'Hyderabad',                        coord:LOCS.hyderabad,  type:'city' },
+    { name:'Delhi NCR',                        coord:LOCS.delhi,      type:'city' },
+  ];
+
+  function makeIcon(type, active) {
+    const cfg = {
+      lng:    { bg: active===false ? '#2a2015' : '#e8980a', border:'#e8980a', shape:'diamond', size:12 },
+      export: { bg:'#ffc040', border:'#ffc040', shape:'diamond', size:11 },
+      hub:    { bg:'#062830', border:'#1ab8cc', shape:'circle',  size:9 },
+      port:   { bg:'#15103a', border:'#7b68ee', shape:'square',  size:8 },
+      city:   { bg:'transparent', border:'rgba(255,255,255,0.2)', shape:'circle', size:5 },
+    };
+    const c = cfg[type] || cfg.hub;
+    const radius = c.shape==='circle' ? '50%' : c.shape==='square' ? '2px' : '2px';
+    const rotate = c.shape==='diamond' ? 'transform:rotate(45deg)' : '';
+    const opacity = active===false ? '0.4' : '1';
+    return L.divIcon({
+      html: `<div style="width:${c.size}px;height:${c.size}px;background:${c.bg};border:1.5px solid ${c.border};border-radius:${radius};${rotate};box-shadow:0 0 ${c.size}px ${c.border}60;opacity:${opacity}"></div>`,
+      className:'', iconAnchor:[c.size/2, c.size/2],
+    });
+  }
+
+  INFRA.forEach(inf => {
+    if (!inf.coord) return;
+    L.marker(inf.coord, { icon: makeIcon(inf.type, inf.active) })
+      .addTo(map)
+      .bindTooltip(
+        `<div style="font-family:IBM Plex Mono,monospace;font-size:10px;color:#e8dcc8;line-height:1.5;white-space:pre">${inf.name}</div>`,
+        { className:'gas-tooltip', opacity:1 }
+      );
+  });
+
+  // ── ACTIVE SHIPMENT MARKERS ──────────────────────────────────
+  SHIPMENTS.forEach(s => drawShipment(s, map));
+
+  // Animate every 4s
+  setInterval(tickVessels, 900);
+  setInterval(() => animateShipments(map), 3500);
+
+  // ── MAP LEGEND UPDATE ────────────────────────────────────────
+  const legend = document.querySelector('.map-legend');
+  if (legend) {
+    legend.innerHTML = `
+      <div style="font-size:9px;color:var(--amber);text-transform:uppercase;letter-spacing:.07em;margin-bottom:6px">INFRASTRUCTURE</div>
+      <div class="leg-row"><div style="width:10px;height:10px;background:#e8980a;transform:rotate(45deg);flex-shrink:0;box-shadow:0 0 6px #e8980a60"></div>LNG Terminal (operating)</div>
+      <div class="leg-row"><div style="width:10px;height:10px;background:#2a2015;border:1.5px solid #e8980a;transform:rotate(45deg);flex-shrink:0"></div>LNG Terminal (proposed)</div>
+      <div class="leg-row"><div style="width:10px;height:10px;background:#ffc040;transform:rotate(45deg);flex-shrink:0;box-shadow:0 0 6px #ffc04060"></div>LNG Export Terminal</div>
+      <div class="leg-row"><div style="width:9px;height:9px;background:#062830;border:1.5px solid #1ab8cc;border-radius:50%;flex-shrink:0"></div>Gas Hub / Delivery Point</div>
+      <div class="leg-row"><div style="width:8px;height:8px;background:#15103a;border:1.5px solid #7b68ee;border-radius:2px;flex-shrink:0"></div>Port</div>
+      <div style="font-size:9px;color:var(--amber);text-transform:uppercase;letter-spacing:.07em;margin:8px 0 4px">ROUTES</div>
+      <div class="leg-row"><div style="width:20px;height:2px;background:#1ab8cc;opacity:0.8;flex-shrink:0"></div>Gas Pipeline</div>
+      <div class="leg-row"><div style="width:20px;height:2px;background:#3d9e52;opacity:0.8;flex-shrink:0;border-top:2px dashed #3d9e52"></div>Rail Freight</div>
+      <div class="leg-row"><div style="width:20px;height:1px;background:#7b68ee;opacity:0.6;flex-shrink:0;border-top:1px dashed #7b68ee"></div>Shipping Lane</div>
+      <div style="font-size:9px;color:var(--amber);text-transform:uppercase;letter-spacing:.07em;margin:8px 0 4px">LIVE SHIPMENTS</div>
+      <div class="leg-row"><div class="leg-dot" style="background:var(--amber)"></div>SSLNG Truck</div>
+      <div class="leg-row"><div class="leg-dot" style="background:var(--cyan)"></div>Pipeline flow</div>
+      <div class="leg-row"><div class="leg-dot" style="background:#7b68ee"></div>Ship</div>
+      <div class="leg-row"><div class="leg-dot" style="background:var(--green2)"></div>Rail / ISO</div>
+      <div class="leg-row"><div class="leg-dot" style="background:var(--text3)"></div>Warehouse</div>
+    `;
+  }
+}
+
+
+
+const MODE_COLORS = {truck:'#e8980a', pipe:'#1ab8cc', ship:'#7b68ee', rail:'#3d9e52', wh:'#706050'};
+const MODE_ICONS = {truck:'▲', pipe:'◆', ship:'●', rail:'■', wh:'⬡'};
+
+function shipIcon(s) {
+  const aisOn  = s.ais && s.ais.on;
+  const aisDark = s.ais && !s.ais.on;
+
+  if (s.mode === 'ship') {
+    const hdg = _vesselState[s.id] ? _vesselState[s.id].heading : (s.heading||90);
+    const c = aisOn ? '#7b68ee' : '#ff4444';
+    const aisLabel = aisOn
+      ? `<div style="font-size:7px;color:#7b68ee;font-family:IBM Plex Mono,monospace;position:absolute;top:-13px;left:50%;transform:translateX(-50%);white-space:nowrap">AIS ●</div>`
+      : `<div style="font-size:7px;color:#ff4444;font-family:IBM Plex Mono,monospace;position:absolute;top:-13px;left:50%;transform:translateX(-50%);white-space:nowrap;animation:darkBlink 1.2s ease-in-out infinite">AIS ✕</div>`;
+    return L.divIcon({
+      html: `<div style="position:relative;width:20px;height:20px">
+        ${aisLabel}
+        <svg width="20" height="20" viewBox="0 0 20 20" style="transform:rotate(${hdg}deg);filter:drop-shadow(0 0 4px ${c}80)">
+          <polygon points="10,1 14,8 13,12 10,19 7,12 6,8" fill="${c}" opacity="${aisOn?0.95:0.65}" stroke="${c}" stroke-width="0.5"/>
+        </svg>
+      </div>`,
+      className:'', iconAnchor:[10,10],
+    });
+  }
+
+  if (s.mode === 'truck') {
+    return L.divIcon({
+      html: `<div style="position:relative">
+        <div style="width:13px;height:13px;background:#e8980a;clip-path:polygon(50% 0%,100% 100%,0% 100%);box-shadow:0 0 8px #e8980a60;animation:pip 1.5s infinite"></div>
+      </div>`,
+      className:'', iconAnchor:[6,6],
+    });
+  }
+
+  if (s.mode === 'rail') {
+    return L.divIcon({
+      html:`<div style="width:11px;height:11px;background:#3d9e52;border-radius:2px;box-shadow:0 0 6px #3d9e5260"></div>`,
+      className:'', iconAnchor:[5,5],
+    });
+  }
+
+  return L.divIcon({
+    html:`<div style="width:13px;height:13px;background:#1e1c19;border:1.5px solid #706050;border-radius:2px"></div>`,
+    className:'', iconAnchor:[6,6],
+  });
+}
+
+
+function buildPopup(s) {
+  const aisOn  = s.ais && s.ais.on;
+  const aisDark = s.ais && !s.ais.on;
+  const c = {truck:'#e8980a',pipe:'#1ab8cc',ship:'#7b68ee',rail:'#3d9e52',wh:'#706050'}[s.mode];
+  const row = (l,v) => `<div style="display:flex;justify-content:space-between;font-size:10px;padding:2px 0;border-bottom:1px solid rgba(255,255,255,0.04)"><span style="color:#706050">${l}</span><span>${v}</span></div>`;
+
+  let aisBlock = '';
+  if (s.mode==='ship') {
+    if (aisOn) {
+      aisBlock = `<div style="margin-top:8px;padding:6px 8px;background:rgba(123,104,238,0.1);border:1px solid rgba(123,104,238,0.3)">
+        <div style="font-size:9px;color:#7b68ee;letter-spacing:.07em;margin-bottom:4px">AIS TRANSPONDER ON</div>
+        ${row('MMSI', s.ais.mmsi)}${row('Callsign', s.ais.callsign)}${row('Draught', s.ais.draught)}
+        ${row('Last update', `<span style="color:#50c468">${s.lastUpdate}</span>`)}
+      </div>`;
+    } else {
+      aisBlock = `<div style="margin-top:8px;padding:6px 8px;background:rgba(196,56,56,0.1);border:1px solid rgba(196,56,56,0.4)">
+        <div style="font-size:9px;color:#e04848;letter-spacing:.07em;margin-bottom:4px">⚠ AIS TRANSPONDER OFFLINE</div>
+        <div style="font-size:10px;color:#a89880;line-height:1.5">${s.ais.darkNote}</div>
+        ${row('Last update', `<span style="color:#e04848">${s.lastUpdate}</span>`)}
+      </div>`;
+    }
+  }
+
+  const rows = [
+    s.vessel   ? row('Vessel',   s.vessel+' ('+s.imo+')') : '',
+    s.flag     ? row('Flag/Type',s.flag+' · '+s.vesselType) : '',
+    s.speed    ? row('Speed',    s.speed==='?' ? '<span style="color:#e04848">Unknown (AIS off)</span>' : s.speed) : '',
+    s.driver   ? row('Driver',   s.driver+' · '+s.truck) : '',
+    s.train    ? row('Train',    s.train+' · '+s.containers) : '',
+    s.pipeline ? row('Pipeline', s.pipeline) : '',
+    s.capacity ? row('Capacity', s.capacity) : '',
+    row('Volume', s.vol),
+    row('ETA',    `<span style="color:#e8980a">${s.eta}</span>`),
+    row('Status', `<span style="color:#50c468">${s.status}</span>`),
+    s.progress>0 ? row('Progress', (s.progress*100).toFixed(0)+'% en route') : '',
+  ].join('');
+
+  return `<div style="font-family:IBM Plex Mono,monospace;font-size:11px;min-width:220px;color:#e8dcc8;background:#0f0e0c">
+    <div style="font-weight:600;color:${c};margin-bottom:2px;font-size:12px">${s.id}</div>
+    <div style="color:#a89880;font-size:10px;margin-bottom:6px">${s.label}</div>
+    <div style="color:#706050;font-size:10px;margin-bottom:6px">${s.origin}<br>↓ ${s.dest}</div>
+    ${rows}${aisBlock}
+  </div>`;
+}
+
+function drawShipment(s, map) {
+  if (s.mode === 'wh') {
+    const marker = L.marker(s.oCoord, {icon: shipIcon(s)}).addTo(map).bindPopup(buildPopup(s), {className:'gas-popup', maxWidth:300});
+    window._markers[s.id] = marker;
+    return;
+  }
+  const wps = s.waypoints || [s.oCoord, s.dCoord];
+  if (s.mode !== 'pipe') {
+    const rc = {truck:'#e8980a', ship:'#7b68ee', rail:'#3d9e52'}[s.mode]||'#aaa';
+    L.polyline(wps, {color:rc, weight:1, opacity:0.15, dashArray:'4,8'}).addTo(map);
+  }
+  if (s.mode === 'ship' && _vesselState[s.id]) {
+    _vesselState[s.id].heading = calcHeading(s);
+  }
+  const pos = interpolatePos(s);
+  const marker = L.marker(pos, {icon:shipIcon(s), zIndexOffset:100})
+    .addTo(map).bindPopup(buildPopup(s), {className:'gas-popup', maxWidth:300});
+  window._markers[s.id] = marker;
+}
+
+
+function tickVessels() {
+  SHIPMENTS.filter(s => s.mode==='ship').forEach(s => {
+    const vs = _vesselState[s.id]; if (!vs) return;
+    const aisOn = s.ais && s.ais.on;
+    if (vs.moving) {
+      s.progress = Math.min(0.999, s.progress + 0.0005);
+      vs.heading = calcHeading(s);
+      vs.moveTimer++;
+      if (vs.moveTimer >= vs.nextPause) {
+        vs.moving=false; vs.pauseTimer=0; vs.moveTimer=0;
+        vs.nextResume = aisOn ? 3+Math.floor(Math.random()*6) : 15+Math.floor(Math.random()*25);
+      }
+    } else {
+      vs.pauseTimer++;
+      if (vs.pauseTimer >= vs.nextResume) {
+        vs.moving=true; vs.moveTimer=0;
+        vs.nextPause = 8+Math.floor(Math.random()*12);
+      }
+    }
+    const marker = window._markers[s.id];
+    if (marker) { marker.setLatLng(interpolatePos(s)); marker.setIcon(shipIcon(s)); }
+  });
+}
+
+function animateShipments(map) {
+  SHIPMENTS.filter(s => s.mode==='truck'||s.mode==='rail').forEach(s => {
+    if (s.status==='SCHEDULED') return;
+    s.progress = Math.min(0.999, s.progress + 0.001 + Math.random()*0.001);
+    const marker = window._markers[s.id];
+    if (marker) { marker.setLatLng(interpolatePos(s)); marker.setIcon(shipIcon(s)); }
+  });
+}
+
+
+// ── FILTER BY MODE ─────────────────────────────────────────────
+function filterMode(mode, btn) {
+  currentFilter = mode;
+  document.querySelectorAll('.mmode-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderShipmentCards(mode);
+  // Show/hide map markers
+  SHIPMENTS.forEach(s => {
+    const marker = window._markers[s.id];
+    if (!marker) return;
+    if (mode === 'all' || s.mode === mode) {
+      if (!window._map.hasLayer(marker)) marker.addTo(window._map);
+    } else {
+      if (window._map.hasLayer(marker)) window._map.removeLayer(marker);
+    }
+  });
+}
+
+// ── INIT ON TAB SWITCH ─────────────────────────────────────────
+// Patch st() to init map when track tab opened
+const _origSt = window.st || function(){};
+function st(id, btn) {
+  document.querySelectorAll('.shell').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nt').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + id).classList.add('active');
+  btn.classList.add('active');
+  if (id === 'track') {
+    setTimeout(() => {
+      initMap();
+      renderHeatmap();
+      renderShipmentCards('all');
+      renderNomLog();
+      if (window._map) window._map.invalidateSize();
+    }, 50);
+  }
+}
+
+// Leaflet popup custom style
+const popupStyle = document.createElement('style');
+popupStyle.textContent = `.leaflet-popup-content-wrapper{background:#0f0e0c!important;border:1px solid rgba(232,152,10,0.3)!important;border-radius:0!important;box-shadow:0 4px 20px rgba(0,0,0,.7)!important;padding:0!important}.leaflet-popup-content{margin:12px!important}.leaflet-popup-tip{background:#0f0e0c!important}.gas-tooltip{background:transparent!important;border:none!important;box-shadow:none!important;padding:0!important}.leaflet-tooltip{background:#0f0e0c!important;border:1px solid rgba(255,255,255,0.07)!important;border-radius:0!important;color:#e8dcc8!important;font-family:IBM Plex Mono,monospace!important;font-size:10px!important;box-shadow:none!important}`;
+document.head.appendChild(popupStyle);
+
+</script>
+</body>
+</html>
